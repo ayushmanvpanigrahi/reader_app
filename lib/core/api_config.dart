@@ -10,5 +10,5 @@
 const bool kUseCloudBackend = true;
 
 const String kBackendBaseUrl = kUseCloudBackend
-    ? 'https://reader-ai-backend.onrender.com'
+    ? 'https://reader-app-mi59.onrender.com'
     : 'http://10.0.2.2:8000';
