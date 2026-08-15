@@ -95,6 +95,13 @@ class ProviderRepository {
 
   Future<void> setEmbeddingFallbackPool(List<String> ids) => _fallback.put('embed_pool', ids);
 
+  // User-arranged display priority for the cross-provider embedding pool.
+  // Kept separate from the fallback pool because the auto-switcher mutates
+  // `embed_pool` when models get exhausted.
+  List<String> embeddingPoolOrder() => _fallback.get('embed_pool_order') ?? const [];
+
+  Future<void> setEmbeddingPoolOrder(List<String> ids) => _fallback.put('embed_pool_order', ids);
+
   Future<void> dispose() async {
     await _providers.close();
     await _active.close();

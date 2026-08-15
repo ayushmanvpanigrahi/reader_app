@@ -9,9 +9,11 @@ import '../data/models/ai_provider.dart';
 import '../data/models/usage_stats.dart';
 import '../data/services/model_fetcher.dart';
 import '../domain/notifiers/active_provider_notifier.dart';
+import '../domain/notifiers/embedding_pool_notifier.dart';
 import '../domain/notifiers/provider_list_notifier.dart';
 import '../domain/providers.dart';
 import 'add_edit_provider_screen.dart';
+import 'embedding_pool_screen.dart';
 import 'extensions.dart';
 import 'widgets/model_picker_sheet.dart';
 import 'widgets/rate_limit_ring.dart';
@@ -403,7 +405,86 @@ class _ModelsSection extends ConsumerWidget {
             initialModality: ModelModality.embeddings,
             onPick: (id) => ref.read(activeProviderProvider.notifier).selectEmbeddingModel(id),
           ),
+          const SizedBox(height: 10),
+          _EmbeddingPoolEntry(isDark: isDark),
         ],
+      ),
+    );
+  }
+}
+
+class _EmbeddingPoolEntry extends ConsumerWidget {
+  final bool isDark;
+
+  const _EmbeddingPoolEntry({required this.isDark});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pool = ref.watch(embeddingPoolProvider);
+    final providerCount = pool.map((e) => e.provider.id).toSet().length;
+    final activeId = ref.watch(activeProviderProvider).value?.embeddingModelId;
+
+    final subtitle = pool.isEmpty
+        ? 'No embedding models across providers'
+        : '${activeId ?? 'No active model'} · ${pool.length} in pool · '
+            '$providerCount provider${providerCount == 1 ? '' : 's'}';
+
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const EmbeddingPoolScreen()),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: (isDark ? AppColors.darkInput : AppColors.secondary).withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: (isDark ? AppColors.darkPrimary : AppColors.lightPrimary)
+                .withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.grain_rounded,
+              size: 18,
+              color: isDark ? AppColors.darkPrimary : AppColors.lightPrimary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Embedding Pool',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+            ),
+          ],
+        ),
       ),
     );
   }

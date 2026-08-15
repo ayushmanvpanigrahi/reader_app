@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../data/models/ai_model_info.dart';
 import '../data/models/ai_provider.dart';
+import '../domain/notifiers/embedding_pool_notifier.dart';
 
 extension ProviderTypeX on ProviderType {
   String get label => switch (this) {
@@ -69,6 +70,53 @@ extension ModelFamilyX on ModelFamily {
         ModelFamily.google => 'Google',
         ModelFamily.nvidia => 'NVIDIA',
         ModelFamily.custom => 'Other',
+      };
+}
+
+extension ModelCategoryX on ModelCategory {
+  String get label => switch (this) {
+        ModelCategory.textGeneration => 'Text generation',
+        ModelCategory.embedding => 'Embeddings',
+        ModelCategory.vision => 'Vision/Multimodal',
+        ModelCategory.imageGeneration => 'Image generation',
+        ModelCategory.audio => 'Audio/Speech',
+        ModelCategory.unknown => 'Other',
+      };
+
+  IconData get icon => switch (this) {
+        ModelCategory.textGeneration => Icons.chat_bubble_rounded,
+        ModelCategory.embedding => Icons.grain_rounded,
+        ModelCategory.vision => Icons.visibility_rounded,
+        ModelCategory.imageGeneration => Icons.image_rounded,
+        ModelCategory.audio => Icons.graphic_eq_rounded,
+        ModelCategory.unknown => Icons.category_rounded,
+      };
+}
+
+extension EmbeddingModelStatusX on EmbeddingModelStatus {
+  String get label => switch (this) {
+        EmbeddingModelStatus.available => 'Available',
+        EmbeddingModelStatus.exhausted => 'Rate limited',
+        EmbeddingModelStatus.permanentlyFull => 'Quota exhausted',
+        EmbeddingModelStatus.untested => 'Not tested',
+      };
+
+  IconData get icon => switch (this) {
+        EmbeddingModelStatus.available => Icons.check_circle_rounded,
+        EmbeddingModelStatus.exhausted => Icons.hourglass_top_rounded,
+        EmbeddingModelStatus.permanentlyFull => Icons.error_rounded,
+        EmbeddingModelStatus.untested => Icons.help_rounded,
+      };
+
+  Color color(bool isDark) => switch (this) {
+        EmbeddingModelStatus.available =>
+          isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
+        EmbeddingModelStatus.exhausted =>
+          isDark ? AppColors.darkWarning : AppColors.lightWarning,
+        EmbeddingModelStatus.permanentlyFull =>
+          isDark ? AppColors.darkDanger : AppColors.lightDanger,
+        EmbeddingModelStatus.untested =>
+          isDark ? AppColors.darkMuted : AppColors.lightMuted,
       };
 }
 

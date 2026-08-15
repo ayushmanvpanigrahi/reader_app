@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/ai_model_info.dart';
+import 'model_categorizer.dart';
 
 class ModelFetchResult {
   final List<AIModelInfo> models;
@@ -73,26 +74,18 @@ class ModelFetcher {
     final ownedBy = (json['owned_by']?.toString() ?? '').toLowerCase();
     final idLower = id.toLowerCase();
 
-    final isEmbedding = idLower.contains('embedding') ||
-        idLower.contains('-embed') ||
-        idLower.contains('embedqa') ||
-        idLower.contains('nv-embed') ||
-        idLower.contains('nemoretriever') ||
-        idLower.contains('bge') ||
-        idLower.contains('e5-');
+    final category = categorizeModel(id, json);
+    final isEmbedding = category == ModelCategory.embedding;
+    final isVision = category == ModelCategory.vision;
 
-    ModelModality modality;
-    if (isEmbedding) {
-      modality = ModelModality.embeddings;
-    } else if (idLower.contains('vision') ||
-        idLower.contains('omni') ||
-        idLower.contains('multimodal') ||
-        (json['input_modalities'] is List &&
-            (json['input_modalities'] as List).contains('image'))) {
-      modality = ModelModality.vision;
-    } else {
-      modality = ModelModality.text;
-    }
+    final modality = switch (category) {
+      ModelCategory.embedding => ModelModality.embeddings,
+      ModelCategory.vision => ModelModality.vision,
+      ModelCategory.imageGeneration => ModelModality.image,
+      ModelCategory.textGeneration ||
+      ModelCategory.audio ||
+      ModelCategory.unknown => ModelModality.text,
+    };
 
     return AIModelInfo(
       id: id,
@@ -105,9 +98,9 @@ class ModelFetcher {
       pricingTierName: (json['pricing_tier'] as String? ?? '').toLowerCase() == 'paid'
           ? 'paid'
           : 'free',
-      isChat: !isEmbedding,
+      isChat: category == ModelCategory.textGeneration || isVision,
       isEmbedding: isEmbedding,
-      isVision: modality == ModelModality.vision,
+      isVision: isVision,
     );
   }
 

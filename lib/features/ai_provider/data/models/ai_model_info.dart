@@ -8,6 +8,38 @@ enum ModelFamily { meta, mistral, qwen, deepseek, openai, anthropic, google, nvi
 
 enum PricingTier { free, paid }
 
+enum ModelCategory { textGeneration, embedding, vision, imageGeneration, audio, unknown }
+
+/// Runtime embedding spec for a model. Derived on the fly from the cached
+/// [AIModelInfo] — nothing is persisted, so dimensions fall back to known
+/// values for common embedding models when the provider does not expose them.
+class EmbeddingSpec {
+  final int? dimensions;
+  final int? maxInputTokens;
+  final String? similarity;
+
+  const EmbeddingSpec({this.dimensions, this.maxInputTokens, this.similarity});
+}
+
+int? knownEmbeddingDimensions(String id) {
+  final i = id.toLowerCase();
+  if (i.contains('text-embedding-3-small')) return 1536;
+  if (i.contains('text-embedding-3-large')) return 3072;
+  if (i.contains('text-embedding-ada') || i.contains('text-embedding-004')) return 768;
+  if (i.contains('nomic-embed')) return 768;
+  if (i.contains('nemotron-3-embed')) return 2048;
+  if (i.contains('nv-embedqa')) return 1024;
+  if (i.contains('nv-embed-v1')) return 2048;
+  if (i.contains('e5-base')) return 768;
+  if (i.contains('e5-large')) return 1024;
+  if (i.contains('bge-small')) return 384;
+  if (i.contains('bge-base')) return 768;
+  if (i.contains('bge-large')) return 1024;
+  if (i.contains('gte-base')) return 768;
+  if (i.contains('gte-large')) return 1024;
+  return null;
+}
+
 @HiveType(typeId: 1)
 class AIModelInfo extends HiveObject {
   @HiveField(0)
@@ -65,6 +97,20 @@ class AIModelInfo extends HiveObject {
       );
 
   bool get isFree => pricingTier == PricingTier.free;
+
+  ModelCategory get category => switch (modality) {
+        ModelModality.embeddings => ModelCategory.embedding,
+        ModelModality.vision => ModelCategory.vision,
+        ModelModality.image => ModelCategory.imageGeneration,
+        ModelModality.text => ModelCategory.textGeneration,
+      };
+
+  EmbeddingSpec? get embeddingSpec => category == ModelCategory.embedding
+      ? EmbeddingSpec(
+          dimensions: knownEmbeddingDimensions(id),
+          maxInputTokens: contextWindow > 0 ? contextWindow : null,
+        )
+      : null;
 
   AIModelInfo copyWith({
     String? id,

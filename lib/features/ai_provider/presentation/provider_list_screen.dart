@@ -7,10 +7,13 @@ import '../../../core/widgets/surface_card.dart';
 import '../data/models/ai_model_info.dart';
 import '../data/models/ai_provider.dart';
 import '../domain/notifiers/active_provider_notifier.dart';
+import '../domain/notifiers/embedding_pool_notifier.dart';
 import '../domain/notifiers/model_switcher_notifier.dart';
 import '../domain/notifiers/provider_list_notifier.dart';
 import '../domain/providers.dart';
 import 'add_edit_provider_screen.dart';
+import 'all_models_screen.dart';
+import 'embedding_pool_screen.dart';
 import 'extensions.dart';
 import 'provider_detail_screen.dart';
 import 'widgets/model_picker_sheet.dart';
@@ -61,6 +64,14 @@ class _ProviderListScreenState extends ConsumerState<ProviderListScreen> {
         actions: [
           IconButton(
             icon: Icon(
+              Icons.grid_view_rounded,
+              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+            ),
+            tooltip: 'All models',
+            onPressed: () => _openAllModels(),
+          ),
+          IconButton(
+            icon: Icon(
               Icons.tune_rounded,
               color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
             ),
@@ -105,6 +116,8 @@ class _ProviderListScreenState extends ConsumerState<ProviderListScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              EmbeddingPoolShortcut(isDark: isDark),
+              const SizedBox(height: 16),
               const RagSetupCard(),
               const SizedBox(height: 20),
               Row(
@@ -158,6 +171,12 @@ class _ProviderListScreenState extends ConsumerState<ProviderListScreen> {
   void _openDetail(AIProvider provider) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ProviderDetailScreen(providerId: provider.id)),
+    );
+  }
+
+  void _openAllModels() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AllModelsScreen()),
     );
   }
 
@@ -473,6 +492,116 @@ class _PoolSection extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class EmbeddingPoolShortcut extends ConsumerWidget {
+  final bool isDark;
+
+  const EmbeddingPoolShortcut({super.key, required this.isDark});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pool = ref.watch(embeddingPoolProvider);
+    final active = ref.watch(activeProviderProvider).value;
+    final activeId = active?.embeddingModelId;
+
+    final available = pool.where((e) => e.status == EmbeddingModelStatus.available).length;
+    final nextFallback = pool
+        .where((e) =>
+            e.model.id != activeId && e.status == EmbeddingModelStatus.available)
+        .map((e) => e.model.id)
+        .firstOrNull;
+
+    return SurfaceCard(
+      borderRadius: 18,
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const EmbeddingPoolScreen()),
+        );
+      },
+      borderColor: (isDark ? AppColors.darkPrimary : AppColors.lightPrimary)
+          .withValues(alpha: 0.35),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    (isDark ? AppColors.darkPrimary : AppColors.lightPrimary),
+                    (isDark ? AppColors.darkPrimary : AppColors.lightPrimary)
+                        .withValues(alpha: 0.7),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Icon(Icons.grain_rounded, color: Colors.white, size: 21),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Embedding Pool',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$available/${pool.length} available',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    activeId != null ? 'Active: $activeId' : 'No active embedding model',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                    ),
+                  ),
+                  if (nextFallback != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Next fallback: $nextFallback',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
