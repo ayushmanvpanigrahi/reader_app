@@ -98,7 +98,15 @@ class OpenAICompatibleLLM:
                             event = json.loads(chunk)
                         except json.JSONDecodeError:
                             continue
-                        delta = event.get("choices", [{}])[0].get("delta", {})
+                        choices = event.get("choices")
+                        if not choices:
+                            # Usage-only final chunk (choices: []) sent by
+                            # OpenRouter/NVIDIA before [DONE].
+                            usage = event.get("usage")
+                            if usage:
+                                on_usage(usage)
+                            continue
+                        delta = choices[0].get("delta") or {}
                         token = delta.get("content")
                         if token:
                             emitted = True
