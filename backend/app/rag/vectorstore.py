@@ -15,6 +15,7 @@ from qdrant_client.models import (
     Fusion,
     FusionQuery,
     MatchValue,
+    PayloadSchemaType,
     PointStruct,
     PointVectors,
     Prefetch,
@@ -33,6 +34,11 @@ logger = get_logger(__name__)
 
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "bm25"
+
+# Every filter in this store uses exact-match keyword conditions on these keys.
+# Qdrant raises "Index required but not found" on filtered queries when no
+# payload index exists, so each key needs a KEYWORD index.
+PAYLOAD_INDEX_KEYS = ("user_id", "book_id", "chapter")
 
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -103,25 +109,59 @@ class QdrantHybridStore:
         self._embeddings = get_embeddings()
         self._bm25 = get_bm25_encoder()
         self._dense_size: dict[str, int] = {}
+        self._payload_indexed: set[str] = set()
 
     def _collection_name(self, user_id: str) -> str:
         safe_user = hashlib.sha1(user_id.encode()).hexdigest()[:12]
         return f"{settings.COLLECTION_PREFIX}_{safe_user}"
 
+    async def _ensure_payload_indexes(self, user_id: str) -> None:
+        """Create KEYWORD payload indexes for every filtered key.
+
+        Idempotent — once created for a collection, later calls are no-ops.
+        Tolerates "index already exists" so it can run against collections
+        created before this fix.
+        """
+        name = self._collection_name(user_id)
+        for key in PAYLOAD_INDEX_KEYS:
+            try:
+                await self._client.create_payload_index(
+                    collection_name=name,
+                    field_name=key,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                    wait=False,
+                )
+            except Exception as exc:  # noqa: BLE001 - index already present is fine
+                logger.debug("Payload index for %s.%s already present: %s", name, key, exc)
+        self._payload_indexed.add(name)
+
     async def _ensure_collection(self, user_id: str, vector_size: int) -> None:
         name = self._collection_name(user_id)
-        if await self._client.collection_exists(name):
-            return
-        await self._client.create_collection(
-            collection_name=name,
-            vectors_config={
-                DENSE_VECTOR_NAME: VectorParams(size=vector_size, distance=Distance.COSINE),
-            },
-            sparse_vectors_config={
-                SPARSE_VECTOR_NAME: SparseVectorParams(index=SparseIndexParams(on_disk=True)),
-            },
-        )
-        self._dense_size[user_id] = vector_size
+        if not await self._client.collection_exists(name):
+            await self._client.create_collection(
+                collection_name=name,
+                vectors_config={
+                    DENSE_VECTOR_NAME: VectorParams(size=vector_size, distance=Distance.COSINE),
+                },
+                sparse_vectors_config={
+                    SPARSE_VECTOR_NAME: SparseVectorParams(index=SparseIndexParams(on_disk=True)),
+                },
+            )
+            self._dense_size[user_id] = vector_size
+        await self._ensure_payload_indexes(user_id)
+
+    async def _prepare(self, user_id: str) -> bool:
+        """True if the user's collection exists (payload indexes ensured).
+
+        Covers collections created before this fix that still lack the
+        keyword indexes required for filtered queries/scrolls.
+        """
+        name = self._collection_name(user_id)
+        if not await self._client.collection_exists(name):
+            return False
+        if name not in self._payload_indexed:
+            await self._ensure_payload_indexes(user_id)
+        return True
 
     async def _collection_dense_size(self, user_id: str) -> int | None:
         cached = self._dense_size.get(user_id)
@@ -214,6 +254,11 @@ class QdrantHybridStore:
     ) -> list[dict[str, Any]]:
         sparse_vec = await self._bm25.encode(query, as_query=True)
 
+        collection_name = self._collection_name(user_id)
+        if not await self._prepare(user_id):
+            logger.debug("No collection for user %s — returning empty search", user_id)
+            return []
+
         conditions = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
         if book_ids:
             conditions.append(FieldCondition(key="book_id", match=MatchValue(value=book_ids[0])))
@@ -221,7 +266,6 @@ class QdrantHybridStore:
             conditions.append(FieldCondition(key="chapter", match=MatchValue(value=chapter)))
         search_filter = Filter(must=conditions) if conditions else None
 
-        collection_name = self._collection_name(user_id)
         dense_vec: list[float] | None = None
         try:
             collection_dim = await self._collection_dense_size(user_id)
@@ -279,7 +323,7 @@ class QdrantHybridStore:
         file.
         """
         name = self._collection_name(user_id)
-        if not await self._client.collection_exists(name):
+        if not await self._prepare(user_id):
             return 0
 
         endpoints = provider_context.embed_endpoints()
@@ -351,7 +395,7 @@ class QdrantHybridStore:
     async def list_books(self, user_id: str) -> list[dict[str, Any]]:
         """Aggregate per-book stats from the user's collection (server-side truth)."""
         name = self._collection_name(user_id)
-        if not await self._client.collection_exists(name):
+        if not await self._prepare(user_id):
             return []
 
         books: dict[str, dict[str, Any]] = {}
@@ -391,8 +435,11 @@ class QdrantHybridStore:
         return list(books.values())
 
     async def delete_book(self, user_id: str, book_id: str) -> None:
+        name = self._collection_name(user_id)
+        if not await self._prepare(user_id):
+            return
         await self._client.delete(
-            collection_name=self._collection_name(user_id),
+            collection_name=name,
             points_selector=Filter(must=[FieldCondition(key="book_id", match=MatchValue(value=book_id))]),
         )
 
