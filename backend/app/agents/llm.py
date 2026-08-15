@@ -5,8 +5,8 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
 from app.core.logging import get_logger
+from app.services import provider_context
 
 logger = get_logger(__name__)
 
@@ -15,41 +15,29 @@ class LLMError(RuntimeError):
     pass
 
 
+class _StreamSetupError(RuntimeError):
+    """Connection/HTTP failure before any token was emitted (retryable)."""
+
+
 class OpenAICompatibleLLM:
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(timeout=120.0)
 
-    @property
-    def _url(self) -> str:
-        base = settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
-        return f"{base.rstrip('/')}/chat/completions"
-
-    @property
-    def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if settings.OPENAI_API_KEY:
-            headers["Authorization"] = f"Bearer {settings.OPENAI_API_KEY}"
-        return headers
-
     async def complete(self, *, messages: list[dict[str, str]], temperature: float | None = None) -> str:
-        payload = {
-            "model": settings.CHAT_MODEL,
-            "messages": messages,
-            "temperature": settings.TEMPERATURE if temperature is None else temperature,
-        }
-        try:
-            resp = await self._client.post(self._url, json=payload, headers=self._headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPStatusError as exc:
-            raise LLMError(f"LLM returned {exc.response.status_code}: {exc.response.text[:300]}") from exc
-        except httpx.HTTPError as exc:
-            raise LLMError(f"LLM request failed: {exc}") from exc
-
-        try:
-            return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LLMError(f"Malformed LLM response: {data}") from exc
+        endpoints = provider_context.chat_endpoints()
+        last_error: str | None = None
+        for ep in endpoints:
+            try:
+                content = await self._complete_once(ep, messages=messages, temperature=temperature)
+                provider_context.emit_provider_used(ep.provider_name, ep.model, kind="chat")
+                return content
+            except httpx.HTTPStatusError as exc:
+                last_error = self._describe_error(ep, exc)
+                self._switch_away(ep, last_error)
+            except httpx.HTTPError as exc:
+                last_error = f"{ep.provider_name or ep.base_url}: {exc}"
+                self._switch_away(ep, last_error)
+        raise LLMError(f"No working LLM provider. Last error: {last_error}")
 
     async def complete_json(self, *, messages: list[dict[str, str]], temperature: float | None = None) -> dict[str, Any]:
         content = await self.complete(messages=messages, temperature=temperature)
@@ -63,43 +51,102 @@ class OpenAICompatibleLLM:
         on_token: Any,
         on_usage: Any,
     ) -> str:
-        payload = {
-            "model": settings.CHAT_MODEL,
-            "messages": messages,
-            "temperature": settings.TEMPERATURE if temperature is None else temperature,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        full = ""
-        try:
-            async with self._client.stream("POST", self._url, json=payload, headers=self._headers) as resp:
-                if resp.status_code >= 400:
-                    body = await resp.aread()
-                    raise LLMError(f"LLM returned {resp.status_code}: {body[:300]}")
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    chunk = line[5:].strip()
-                    if chunk == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(chunk)
-                    except json.JSONDecodeError:
-                        continue
-                    delta = event.get("choices", [{}])[0].get("delta", {})
-                    token = delta.get("content")
-                    if token:
-                        full += token
-                        on_token(token)
-                    usage = event.get("usage")
-                    if usage:
-                        on_usage(usage)
-        except httpx.HTTPError as exc:
-            raise LLMError(f"LLM stream failed: {exc}") from exc
-        return full
+        endpoints = provider_context.chat_endpoints()
+        last_error: str | None = None
+        for ep in endpoints:
+            emitted = False
+            full = ""
+            try:
+                payload = {
+                    "model": ep.model,
+                    "messages": messages,
+                    "temperature": self._temperature(temperature),
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                }
+                url = f"{ep.base_url.rstrip('/')}/chat/completions"
+                headers = self._headers(ep)
+                async with self._client.stream("POST", url, json=payload, headers=headers) as resp:
+                    if resp.status_code >= 400:
+                        body = await resp.aread()
+                        raise _StreamSetupError(
+                            f"{ep.provider_name or ep.base_url}: HTTP {resp.status_code}: {body[:300]}"
+                        )
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        chunk = line[5:].strip()
+                        if chunk == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(chunk)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = event.get("choices", [{}])[0].get("delta", {})
+                        token = delta.get("content")
+                        if token:
+                            emitted = True
+                            full += token
+                            on_token(token)
+                        usage = event.get("usage")
+                        if usage:
+                            on_usage(usage)
+                provider_context.emit_provider_used(ep.provider_name, ep.model, kind="chat")
+                return full
+            except _StreamSetupError as exc:
+                last_error = str(exc)
+            except httpx.HTTPError as exc:
+                last_error = f"{ep.provider_name or ep.base_url}: {exc}"
+                if emitted:
+                    raise LLMError(f"LLM stream failed after partial output: {last_error}") from exc
+
+            self._switch_away(ep, last_error)
+        raise LLMError(f"No working LLM provider. Last error: {last_error}")
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    async def _complete_once(
+        self,
+        ep: provider_context.Endpoint,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float | None,
+    ) -> str:
+        payload = {
+            "model": ep.model,
+            "messages": messages,
+            "temperature": self._temperature(temperature),
+        }
+        url = f"{ep.base_url.rstrip('/')}/chat/completions"
+        resp = await self._client.post(url, json=payload, headers=self._headers(ep))
+        resp.raise_for_status()
+        data = resp.json()
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMError(f"Malformed LLM response: {data}") from exc
+
+    def _switch_away(self, ep: provider_context.Endpoint, reason: str) -> None:
+        logger.warning("Provider %s failed, switching away: %s", ep.provider_name or ep.provider_id, reason)
+        provider_context.mark_failed(ep.provider_id, reason)
+
+    @staticmethod
+    def _headers(ep: provider_context.Endpoint) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if ep.api_key:
+            headers["Authorization"] = f"Bearer {ep.api_key}"
+        return headers
+
+    @staticmethod
+    def _temperature(temperature: float | None) -> float:
+        from app.core.config import settings
+
+        return settings.TEMPERATURE if temperature is None else temperature
+
+    @staticmethod
+    def _describe_error(ep: provider_context.Endpoint, exc: httpx.HTTPStatusError) -> str:
+        return f"{ep.provider_name or ep.base_url}: HTTP {exc.response.status_code}: {exc.response.text[:300]}"
 
 
 def _parse_json(content: str) -> dict[str, Any]:

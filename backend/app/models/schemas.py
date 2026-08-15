@@ -24,12 +24,14 @@ class ChatRequest(BaseModel):
     book_ids: list[str] = Field(default_factory=list)
     session_id: str = "default"
     user_id: str = Field(..., min_length=1)
+    provider_id: str | None = None
 
 
 class ResumeRequest(BaseModel):
     thread_id: str = Field(..., min_length=1)
     approved: bool
     user_id: str = Field(..., min_length=1)
+    provider_id: str | None = None
 
 
 class ExplainHighlightRequest(BaseModel):
@@ -39,6 +41,41 @@ class ExplainHighlightRequest(BaseModel):
     surrounding_context: str = ""
     user_id: str = Field(..., min_length=1)
     session_id: str = "highlight-default"
+    provider_id: str | None = None
+
+
+class ProviderIn(BaseModel):
+    id: str = Field(..., min_length=1)
+    name: str = ""
+    base_url: str = Field(..., min_length=1)
+    api_key: str = ""
+    chat_model: str = ""
+    embedding_model: str = ""
+    priority: int = 0
+
+
+class ProviderSyncRequest(BaseModel):
+    providers: list[ProviderIn] = Field(default_factory=list)
+
+
+class ProviderSyncResponse(BaseModel):
+    synced: int
+
+
+class ProviderInfo(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    chat_model: str = ""
+    embedding_model: str = ""
+    priority: int = 0
+    healthy: bool = True
+    cooldown_until: float | None = None
+    last_error: str = ""
+
+
+class ProviderBackfillRequest(BaseModel):
+    book_id: str | None = None
 
 
 class IngestResponse(BaseModel):

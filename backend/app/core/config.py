@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str | None = None
     CHAT_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIM: int = 1536
     TEMPERATURE: float = 0.3
 
     # Reranker: "cohere" | "bge" | "none"

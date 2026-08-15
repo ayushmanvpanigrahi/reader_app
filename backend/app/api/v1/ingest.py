@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import get_current_user_id
 from app.core.config import settings
 from app.models.schemas import IngestResponse, IngestStatus
+from app.services import provider_context
 from app.services.ingest_service import enqueue_ingest, get_task
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -17,6 +18,7 @@ async def ingest_file(
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     author: str | None = Form(default=None),
+    provider_id: str | None = Form(default=None),
     user_id: str = Depends(get_current_user_id),
 ) -> IngestResponse:
     allowed = {"pdf", "epub"}
@@ -26,6 +28,8 @@ async def ingest_file(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             content={"detail": f"Unsupported file type '{suffix}'. Allowed: pdf, epub."},
         )
+
+    provider_context.bind_request(user_id=user_id, provider_id=provider_id)
 
     task = await enqueue_ingest(
         user_id=user_id,

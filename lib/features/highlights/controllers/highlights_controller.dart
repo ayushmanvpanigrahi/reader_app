@@ -170,10 +170,12 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     required String selectedText,
   }) async {
     try {
+      final providerId = _ref.read(activeProviderProvider).value?.provider?.id;
       final stream = _ragService.streamExplainHighlight(
         selectedText: selectedText,
         bookId: backendBookId,
         chapter: 'Page $pageNumber',
+        providerId: providerId,
       );
       HighlightExplanation? parsed;
       await for (final event in stream) {

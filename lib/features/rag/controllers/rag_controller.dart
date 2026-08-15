@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_config.dart';
+import '../../ai_provider/domain/providers.dart';
 import '../../library/data/models/book_model.dart';
 import '../data/rag_models.dart';
 import '../data/rag_service.dart';
@@ -113,10 +114,41 @@ class RagController extends StateNotifier<RagState> {
       connected: ok,
       error: ok ? null : 'Cannot reach backend at ${state.baseUrl}',
     );
+    if (ok) await syncProviders();
+  }
+
+  /// Push every provider configured in the app (base URL + key + selected
+  /// chat/embedding model) to the backend so server-side RAG uses the same
+  /// providers and can auto-switch when a free plan is exhausted.
+  Future<void> syncProviders() async {
+    if (!state.connected) return;
+    final repo = _ref.read(providerRepositoryProvider);
+    final providers = <RagProvider>[];
+    for (final p in repo.all()) {
+      final key = await repo.apiKey(p.id);
+      providers.add(
+        RagProvider(
+          id: p.id,
+          name: p.displayName,
+          baseUrl: p.baseUrl,
+          apiKey: key ?? '',
+          chatModel: p.activeChatModelId,
+          embeddingModel: p.activeEmbeddingModelId,
+          priority: p.isActive ? 0 : 1,
+        ),
+      );
+    }
+    try {
+      await _service.syncProviders(providers);
+    } catch (_) {
+      // Non-fatal: backend falls back to its server-side provider settings.
+    }
   }
 
   Future<void> ensureSession() async {
-    if (state.connected) return;
+    if (state.connected) {
+      return;
+    }
     final ok = await _service.health();
     if (!ok) {
       state = state.copyWith(connected: false, error: 'RAG backend unreachable. Start it with `runapp`.');
@@ -125,6 +157,7 @@ class RagController extends StateNotifier<RagState> {
     try {
       await _service.health();
       state = state.copyWith(connected: true, error: null);
+      await syncProviders();
     } catch (_) {
       state = state.copyWith(connected: false, error: 'RAG session failed.');
     }
@@ -164,11 +197,15 @@ class RagController extends StateNotifier<RagState> {
 
     try {
       final filename = book.filePath.split(RegExp(r'[\\/]')).last;
+      final activeProviderId = _ref
+          .read(providerRepositoryProvider)
+          .activeProviderId();
       final result = await _service.ingestFile(
         filePath: book.filePath,
         filename: filename,
         title: book.title,
         author: book.author,
+        providerId: activeProviderId,
       );
       final taskId = result['task_id'] as String;
       await _pollIngest(book.id, taskId);

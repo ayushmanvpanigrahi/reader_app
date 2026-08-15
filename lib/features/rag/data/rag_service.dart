@@ -52,17 +52,33 @@ class RagService {
     }
   }
 
+  Future<void> syncProviders(List<RagProvider> providers) async {
+    final token = await _token();
+    await _dio().post(
+      '/api/v1/providers/sync',
+      data: {
+        'providers': [for (final p in providers) p.toJson()],
+      },
+      options: Options(
+        headers: {'Authorization': 'Bearer $token'},
+        contentType: Headers.jsonContentType,
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>> ingestFile({
     required String filePath,
     required String filename,
     required String title,
     required String author,
+    String? providerId,
   }) async {
     final token = await _token();
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(filePath, filename: filename),
       'title': title,
       'author': author,
+      'provider_id': ?providerId,
     });
     final resp = await _dio().post(
       '/api/v1/ingest',
@@ -86,6 +102,7 @@ class RagService {
     List<String> bookIds = const [],
     String sessionId = 'default',
     String mode = 'single',
+    String? providerId,
   }) {
     return _sse(
       '/api/v1/chat/stream',
@@ -95,6 +112,7 @@ class RagService {
         'book_ids': bookIds,
         'session_id': sessionId,
         'user_id': 'x',
+        'provider_id': ?providerId,
       },
     );
   }
@@ -105,6 +123,7 @@ class RagService {
     String chapter = '',
     String surroundingContext = '',
     String sessionId = 'highlight-default',
+    String? providerId,
   }) {
     return _sse(
       '/api/v1/reader/explain-highlight',
@@ -115,6 +134,7 @@ class RagService {
         'surrounding_context': surroundingContext,
         'user_id': 'x',
         'session_id': sessionId,
+        'provider_id': ?providerId,
       },
     );
   }

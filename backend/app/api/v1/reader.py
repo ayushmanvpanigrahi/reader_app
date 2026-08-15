@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import get_current_user_id
 from app.core.logging import get_logger
 from app.models.schemas import ExplainHighlightRequest, ResumeRequest
+from app.services import provider_context
 from app.services.chat_service import resume_thread, run_highlight
 
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ async def explain_highlight(
     request.user_id = user_id
 
     async def event_gen():
+        provider_context.bind_request(user_id=user_id, provider_id=request.provider_id)
         try:
             async for event in run_highlight(request):
                 yield {
@@ -49,6 +51,7 @@ async def resume_chat(
         request.user_id = user_id
 
     async def event_gen():
+        provider_context.bind_request(user_id=user_id, provider_id=request.provider_id)
         try:
             async for event in resume_thread(request):
                 yield {

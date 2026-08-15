@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import get_current_user_id
 from app.core.logging import get_logger
 from app.models.schemas import ChatRequest
+from app.services import provider_context
 from app.services.chat_service import run_chat
 
 logger = get_logger(__name__)
@@ -23,6 +24,7 @@ async def chat_stream(
         request.user_id = user_id
 
     async def event_gen():
+        provider_context.bind_request(user_id=user_id, provider_id=request.provider_id)
         try:
             async for event in run_chat(request):
                 yield {

@@ -9,6 +9,7 @@ from app.agents.graph import get_compiled_graph
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.schemas import ChatRequest, ExplainHighlightRequest, ResumeRequest
+from app.services import provider_context
 
 logger = get_logger(__name__)
 
@@ -46,12 +47,23 @@ def _dump(event: dict[str, Any]) -> str:
     return json.dumps(event, ensure_ascii=False)
 
 
+async def _yield_with_provider_events(agen: AsyncGenerator[dict[str, Any], None]):
+    """Yield provider switch events before each graph event so the UI sees
+    which provider actually served the request."""
+    async for event in agen:
+        for prov_event in provider_context.drain_events():
+            yield prov_event
+        yield event
+    for prov_event in provider_context.drain_events():
+        yield prov_event
+
+
 async def run_chat(request: ChatRequest) -> AsyncGenerator[dict[str, Any], None]:
     graph = get_compiled_graph()
     config = _config(request.session_id, request.user_id)
     state = _initial_state(request)
 
-    async for event in graph.astream(state, config=config, stream_mode="custom"):
+    async for event in _yield_with_provider_events(graph.astream(state, config=config, stream_mode="custom")):
         yield event
 
     snapshot = await graph.aget_state(config)
@@ -77,7 +89,7 @@ async def run_highlight(request: ExplainHighlightRequest) -> AsyncGenerator[dict
     config = _config(request.session_id, request.user_id)
     state = _initial_state(request)
 
-    async for event in graph.astream(state, config=config, stream_mode="custom"):
+    async for event in _yield_with_provider_events(graph.astream(state, config=config, stream_mode="custom")):
         yield event
 
     snapshot = await graph.aget_state(config)
@@ -99,7 +111,7 @@ async def resume_thread(request: ResumeRequest) -> AsyncGenerator[dict[str, Any]
     graph = get_compiled_graph()
     config = _config(request.thread_id, request.user_id)
 
-    async for event in graph.astream(Command(resume=request.approved), config=config, stream_mode="custom"):
+    async for event in _yield_with_provider_events(graph.astream(Command(resume=request.approved), config=config, stream_mode="custom")):
         yield event
 
     snapshot = await graph.aget_state(config)

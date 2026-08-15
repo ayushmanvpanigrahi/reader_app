@@ -257,10 +257,12 @@ class ChatController extends StateNotifier<ChatState> {
     var grounded = true;
 
     try {
+      final providerId = _ref.read(activeProviderProvider).value?.provider?.id;
       final stream = _ragService.streamChat(
         query: text,
         bookIds: [backendBookId],
         sessionId: 'book_$appBookId',
+        providerId: providerId,
       );
       await for (final event in stream) {
         switch (event.type) {
@@ -270,6 +272,11 @@ class ChatController extends StateNotifier<ChatState> {
             retrieved = (event.data as num?)?.toInt() ?? 0;
           case 'status':
             statuses.add(event.data as String);
+          case 'provider_used':
+            final d = event.data as Map<String, dynamic>;
+            final p = d['provider'] as String? ?? '';
+            final m = d['model'] as String? ?? '';
+            if (p.isNotEmpty) statuses.add('AI: $p · $m');
           case 'done':
             final data = event.data as Map<String, dynamic>;
             grounded = data['grounded'] as bool? ?? true;

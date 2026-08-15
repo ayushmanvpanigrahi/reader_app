@@ -2,6 +2,40 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/api_config.dart';
 
+/// A provider (base URL + key + model selections) pushed to the backend so
+/// server-side RAG can use the same free/OpenAI-compatible providers the app
+/// is configured with, and auto-switch when a free plan runs out.
+@immutable
+class RagProvider {
+  final String id;
+  final String name;
+  final String baseUrl;
+  final String apiKey;
+  final String? chatModel;
+  final String? embeddingModel;
+  final int priority;
+
+  const RagProvider({
+    required this.id,
+    this.name = '',
+    required this.baseUrl,
+    this.apiKey = '',
+    this.chatModel,
+    this.embeddingModel,
+    this.priority = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'base_url': baseUrl,
+        'api_key': apiKey,
+        'chat_model': chatModel ?? '',
+        'embedding_model': embeddingModel ?? '',
+        'priority': priority,
+      };
+}
+
 @immutable
 class RagConfig {
   final bool enabled;
