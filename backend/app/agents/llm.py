@@ -23,8 +23,18 @@ class OpenAICompatibleLLM:
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(timeout=120.0)
 
-    async def complete(self, *, messages: list[dict[str, str]], temperature: float | None = None) -> str:
-        endpoints = provider_context.chat_endpoints()
+    async def complete(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        fast: bool = False,
+    ) -> str:
+        endpoints = (
+            provider_context.internal_chat_endpoints()
+            if fast
+            else provider_context.chat_endpoints()
+        )
         last_error: str | None = None
         for ep in endpoints:
             try:
@@ -39,8 +49,14 @@ class OpenAICompatibleLLM:
                 self._switch_away(ep, last_error)
         raise LLMError(f"No working LLM provider. Last error: {last_error}")
 
-    async def complete_json(self, *, messages: list[dict[str, str]], temperature: float | None = None) -> dict[str, Any]:
-        content = await self.complete(messages=messages, temperature=temperature)
+    async def complete_json(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        fast: bool = False,
+    ) -> dict[str, Any]:
+        content = await self.complete(messages=messages, temperature=temperature, fast=fast)
         return _parse_json(content)
 
     async def stream_complete(

@@ -87,6 +87,10 @@ class ProviderRegistry:
             for p in self._providers.get(user_id, [])
         ]
 
+    def all(self, user_id: str) -> list[ProviderConfig]:
+        """All provider configs for a user (unfiltered, no cursor rotation)."""
+        return list(self._providers.get(user_id, []))
+
     def has_providers(self, user_id: str) -> bool:
         return bool(self._providers.get(user_id))
 

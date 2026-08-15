@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.schemas import ChatRequest, ExplainHighlightRequest, ResumeRequest
 from app.services import provider_context
+from app.services.conversation_memory import get_conversation_memory
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,13 @@ async def _yield_with_provider_events(agen: AsyncGenerator[dict[str, Any], None]
         yield prov_event
 
 
+async def _remember(session_id: str, role: str, content: str) -> None:
+    try:
+        await get_conversation_memory().add_turn(session_id, role, content)
+    except Exception:  # noqa: BLE001 - memory must never break the chat flow
+        logger.debug("Could not persist conversation turn", exc_info=True)
+
+
 async def run_chat(request: ChatRequest) -> AsyncGenerator[dict[str, Any], None]:
     graph = get_compiled_graph()
     config = _config(request.session_id, request.user_id)
@@ -69,10 +77,16 @@ async def run_chat(request: ChatRequest) -> AsyncGenerator[dict[str, Any], None]
     snapshot = await graph.aget_state(config)
     interrupted = bool(snapshot.next)
     if interrupted:
+        await _remember(request.session_id, "user", request.query)
         yield {"type": "hitl_pending", "data": {"reason": snapshot.values.get("hitl_reason")}}
         return
 
     final = snapshot.values
+    await _remember(request.session_id, "user", request.query)
+    answer = final.get("generated_answer", "")
+    if answer:
+        await _remember(request.session_id, "assistant", answer)
+
     yield {
         "type": "done",
         "data": {

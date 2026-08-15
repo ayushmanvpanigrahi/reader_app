@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from langgraph.types import StreamWriter, interrupt
@@ -17,6 +18,7 @@ from app.core.logging import get_logger
 from app.models.agent_state import AgentState
 from app.rag.reranker import get_reranker
 from app.rag.vectorstore import get_vector_store
+from app.services.conversation_memory import format_history_block, get_conversation_memory
 
 logger = get_logger(__name__)
 
@@ -73,25 +75,65 @@ async def relevance_grader_node(state: AgentState, writer: StreamWriter) -> Agen
     question = state.get("rewritten_query") or state["query"]
     docs = state.get("retrieved_docs") or []
 
-    graded: list[dict[str, Any]] = []
-    for doc in docs:
-        prompt = RELEVANCE_GRADER_PROMPT.format(question=question, passage=doc.get("text", "")[:2500])
-        try:
-            verdict = await llm.complete_json(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
+    if not docs:
+        return {"graded_docs": [], "relevance_avg": 0.0}
+
+    # Fast path: gate disabled -> keep every retrieved passage, no LLM calls.
+    if not settings.RELEVANCE_GATE_ENABLED:
+        for doc in docs:
+            doc["relevance"] = doc.get("_score", 0.0)
+            doc["relevance_reason"] = ""
+        avg = sum(d.get("relevance", 0.0) for d in docs) / len(docs)
+        writer(
+            {
+                "type": "status",
+                "data": f"Relevance gate disabled — using retrieval scores ({len(docs)} passages).",
+            }
+        )
+        return {"graded_docs": docs, "relevance_avg": avg}
+
+    # Grade only the top-K passages, concurrently, to collapse the biggest
+    # pre-first-token cost. Ungraded passages keep their retrieval score.
+    grade_candidates = (
+        docs[: settings.RELEVANCE_GRADE_TOP_K]
+        if settings.RELEVANCE_GRADE_TOP_K > 0
+        else docs
+    )
+    sem = asyncio.Semaphore(settings.GRADER_CONCURRENCY)
+
+    async def grade(doc: dict[str, Any]) -> tuple[dict[str, Any], float, str]:
+        async with sem:
+            prompt = RELEVANCE_GRADER_PROMPT.format(
+                question=question, passage=doc.get("text", "")[:2500]
             )
-            score = max(0.0, min(1.0, float(verdict.get("score", 0.0))))
-        except (LLMError, ValueError, TypeError):
-            score = doc.get("_score", 0.0)
+            try:
+                verdict = await llm.complete_json(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    fast=True,
+                )
+                score = max(0.0, min(1.0, float(verdict.get("score", 0.0))))
+                return doc, score, str(verdict.get("reasoning", ""))
+            except (LLMError, ValueError, TypeError):
+                return doc, doc.get("_score", 0.0), ""
 
-        doc["relevance"] = score
-        doc["relevance_reason"] = verdict.get("reasoning", "") if "verdict" in locals() else ""
-        graded.append(doc)
+    results = await asyncio.gather(*(grade(d) for d in grade_candidates))
+    scored = {id(doc): (score, reason) for doc, score, reason in results}
+    for doc in docs:
+        if id(doc) in scored:
+            doc["relevance"], doc["relevance_reason"] = scored[id(doc)]
+        else:
+            doc["relevance"] = doc.get("_score", 0.0)
+            doc["relevance_reason"] = ""
 
-    graded = [d for d in graded if d.get("relevance", 0.0) >= settings.RELEVANCE_THRESHOLD]
+    graded = [d for d in docs if d.get("relevance", 0.0) >= settings.RELEVANCE_THRESHOLD]
     avg = sum(d.get("relevance", 0.0) for d in graded) / len(graded) if graded else 0.0
-    writer({"type": "status", "data": f"Relevance gate: {len(graded)}/{len(docs)} passages passed (avg {avg:.2f})."})
+    writer(
+        {
+            "type": "status",
+            "data": f"Relevance gate: {len(graded)}/{len(docs)} passages passed (avg {avg:.2f}).",
+        }
+    )
     return {"graded_docs": graded, "relevance_avg": avg}
 
 
@@ -112,6 +154,7 @@ async def query_rewriter_node(state: AgentState, writer: StreamWriter) -> AgentS
                     },
                 ],
                 temperature=0.2,
+                fast=True,
             )
         ).strip()
     except LLMError:
@@ -149,6 +192,13 @@ async def answer_generator_node(state: AgentState, writer: StreamWriter) -> Agen
         )
     context = "\n\n".join(context_blocks) or "No retrieved passages."
 
+    history_block = ""
+    if scope != "highlight_explainer":
+        turns = await get_conversation_memory().recent_turns(
+            state.get("session_id", ""), settings.CONVERSATION_HISTORY_TURNS
+        )
+        history_block = format_history_block(turns)
+
     if scope == "highlight_explainer":
         system_prompt = HIGHLIGHT_EXPLAINER_MEMORY_ANCHOR_PROMPT.format(
             selected_text=state.get("highlight_text", ""),
@@ -163,12 +213,15 @@ async def answer_generator_node(state: AgentState, writer: StreamWriter) -> Agen
         system_prompt = MULTI_BOOK_COMPARATIVE_RAG_SYSTEM_PROMPT.format(
             book_count=len(state.get("book_ids") or []) or 2,
             book_list=book_list,
+            history=history_block,
             context=context,
             question=question,
         )
         messages = [{"role": "system", "content": system_prompt}]
     else:
-        system_prompt = SINGLE_BOOK_RAG_SYSTEM_PROMPT.format(context=context, question=question)
+        system_prompt = SINGLE_BOOK_RAG_SYSTEM_PROMPT.format(
+            history=history_block, context=context, question=question
+        )
         messages = [{"role": "system", "content": system_prompt}]
 
     usage: dict[str, int] = {}
@@ -214,7 +267,11 @@ async def hallucination_checker_node(state: AgentState, writer: StreamWriter) ->
 
     prompt = HALLUCINATION_CHECKER_PROMPT.format(context=context, answer=answer[:4000])
     try:
-        verdict = await llm.complete_json(messages=[{"role": "user", "content": prompt}], temperature=0.0)
+        verdict = await llm.complete_json(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            fast=True,
+        )
         grounded = bool(verdict.get("grounded", True))
         claims = [str(c) for c in verdict.get("unsupported_claims", [])]
     except (LLMError, ValueError, TypeError):
@@ -240,7 +297,11 @@ Explanation:
 {answer[:2500]}"""
 
     try:
-        anchor = await llm.complete_json(messages=[{"role": "user", "content": prompt}], temperature=0.5)
+        anchor = await llm.complete_json(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            fast=True,
+        )
         anchor = {
             "reflection_question": str(anchor.get("reflection_question", "")),
             "analogy": str(anchor.get("analogy", "")),
@@ -261,11 +322,17 @@ def route_after_hitl(state: AgentState) -> str:
 
 def route_after_checker(state: AgentState) -> str:
     scope = state.get("scope")
-    if state.get("grounded", True):
-        if scope == "highlight_explainer":
-            return "socratic"
-        return "done"
-    return "rewrite"
+    grounded = state.get("grounded", True)
+    if not grounded:
+        # Only retry while we still have budget left; otherwise finish so the
+        # user gets the answer flagged as ungrounded instead of an endless
+        # rewrite/regenerate loop until LangGraph's recursion limit.
+        if state.get("retrieval_attempts", 0) < settings.RETRIEVAL_MAX_ATTEMPTS:
+            return "rewrite"
+        return "socratic" if scope == "highlight_explainer" else "done"
+    if scope == "highlight_explainer":
+        return "socratic"
+    return "done"
 
 
 def route_after_grader(state: AgentState) -> str:

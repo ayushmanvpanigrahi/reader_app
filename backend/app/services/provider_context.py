@@ -84,6 +84,33 @@ def chat_endpoints() -> list[Endpoint]:
     ]
 
 
+def fast_chat_endpoints() -> list[Endpoint]:
+    """Endpoints that serve settings.FAST_CHAT_MODEL, for internal LLM calls."""
+    if not settings.FAST_CHAT_MODEL:
+        return []
+    uid = _user_id_var.get()
+    if uid:
+        for cfg in get_provider_registry().all(uid):
+            if cfg.chat_model == settings.FAST_CHAT_MODEL and cfg.base_url and cfg.api_key:
+                return [_to_endpoint(cfg, embedding=False)]
+    return []
+
+
+def internal_chat_endpoints() -> list[Endpoint]:
+    """Preferred chain for non-visible LLM calls: fast model first (when
+    configured), then the normal chat endpoints, deduplicated."""
+    merged = fast_chat_endpoints() + chat_endpoints()
+    seen: set[tuple[str, str]] = set()
+    out: list[Endpoint] = []
+    for ep in merged:
+        key = (ep.base_url, ep.model)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ep)
+    return out
+
+
 def embed_endpoints() -> list[Endpoint]:
     pinned = _pinned_var.get()
     if pinned is not None and pinned.embedding_model:

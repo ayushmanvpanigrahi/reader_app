@@ -53,6 +53,25 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 120
     MIN_QUERY_SIMILARITY: float = 0.25
 
+    # Relevance gate / grading
+    RELEVANCE_GATE_ENABLED: bool = True
+    # Grade only the top-N retrieved passages with the LLM (rest fall back to
+    # their retrieval score). 0 = grade every passage.
+    RELEVANCE_GRADE_TOP_K: int = 4
+    # Max concurrent relevance-grade LLM calls per request.
+    GRADER_CONCURRENCY: int = 4
+
+    # Fast model used ONLY for internal (non-visible) LLM calls: relevance
+    # grading, query rewriting, hallucination checking, memory anchors. The
+    # visible answer always streams from the user's selected chat model.
+    # Empty = internal calls use the normal chat endpoint(s).
+    FAST_CHAT_MODEL: str = ""
+
+    # Conversation memory
+    # Max number of prior turns injected into the answer prompt. Uses Redis
+    # when CHECKPOINTER=redis, otherwise an in-memory ring.
+    CONVERSATION_HISTORY_TURNS: int = 6
+
 
 @lru_cache
 def get_settings() -> Settings:
