@@ -5,8 +5,6 @@ import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import BinaryIO
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.rag.document_processor import extract_epub, extract_pdf, semantic_chunk
@@ -42,13 +40,13 @@ async def enqueue_ingest(
     *,
     user_id: str,
     filename: str,
-    file_reader: BinaryIO,
+    content: bytes,
     title: str | None,
     author: str | None,
 ) -> IngestTask:
     task = IngestTask(task_id=uuid.uuid4().hex)
     _tasks[task.task_id] = task
-    asyncio.create_task(_run_ingest(task, user_id, filename, file_reader, title, author))
+    asyncio.create_task(_run_ingest(task, user_id, filename, content, title, author))
     return task
 
 
@@ -56,7 +54,7 @@ async def _run_ingest(
     task: IngestTask,
     user_id: str,
     filename: str,
-    file_reader: BinaryIO,
+    content: bytes,
     title: str | None,
     author: str | None,
 ) -> None:
@@ -66,7 +64,8 @@ async def _run_ingest(
         task.book_id = create_book_id(filename, user_id)
         book_title = title or filename.rsplit(".", 1)[0]
 
-        content = await asyncio.to_thread(file_reader.read)
+        if not content:
+            raise ValueError("Uploaded file is empty — nothing to index.")
 
         filetype = filename.rsplit(".", 1)[-1].lower()
         if filetype == "epub":

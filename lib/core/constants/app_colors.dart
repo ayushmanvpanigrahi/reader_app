@@ -1,46 +1,50 @@
 import 'package:flutter/material.dart';
 
-/// AppColors definition with strictly curated Light and Dark Neomorphic palettes.
+/// AppColors definition with strictly curated Light and Dark palettes.
+///
+/// Kept as a single source of truth so both the neomorphic widgets (other
+/// features) and the flat Material design (AI provider screens) stay
+/// consistent. All names are stable — only values were modernised.
 abstract final class AppColors {
   // Base Palette
-  static const Color primary = Color(0xFFC2703D); // muted orange/brown
-  static const Color oldPaper = Color(0xFFC9A66B);
-  static const Color paper = Color(0xFFFBF9F6); // warm white
-  static const Color stage = Color(0xFFF1EEE7); // warm off-white
-  static const Color ink = Color(0xFF2B2724); // dark grey
-  static const Color secondary = Color(0xFFEAE5DC); // light warm grey
-  static const Color muted = Color(0xFF8C8782); // medium grey
-  static const Color success = Color(0xFF4F9D5C); // green
-  static const Color warning = Color(0xFFD9A93B); // amber
-  static const Color danger = Color(0xFFC4422E); // red
-  static const Color border = Color(0x142B2724); // ink @ 8 % opacity
+  static const Color primary = Color(0xFF4F46E5); // indigo
+  static const Color oldPaper = Color(0xFFF3F4F6);
+  static const Color paper = Color(0xFFFFFFFF); // clean white
+  static const Color stage = Color(0xFFF5F6F8); // cool off-white
+  static const Color ink = Color(0xFF14161A); // near-black
+  static const Color secondary = Color(0xFFEDEFF3); // light cool grey
+  static const Color muted = Color(0xFF626B76); // medium grey
+  static const Color success = Color(0xFF1E9E5A); // green
+  static const Color warning = Color(0xFFD99E00); // amber
+  static const Color danger = Color(0xFFDC3C43); // red
+  static const Color border = Color(0x14151B24); // ink @ 8 % opacity
 
   // Light Palette
-  static const Color lightStage = Color(0xFFF0EEEB);
-  static const Color lightPaper = Color(0xFFFDFAF4);
-  static const Color lightInk = Color(0xFF181310);
-  static const Color lightPrimary = Color(0xFFE57C20);
-  static const Color lightSecondary = Color(0xFFEBE7E1);
-  static const Color lightMuted = Color(0xFF76706C);
-  static const Color lightSuccess = Color(0xFF46B250);
-  static const Color lightWarning = Color(0xFFF3BA25);
-  static const Color lightDanger = Color(0xFFEA3037);
+  static const Color lightStage = Color(0xFFF5F6F8);
+  static const Color lightPaper = Color(0xFFFFFFFF);
+  static const Color lightInk = Color(0xFF14161A);
+  static const Color lightPrimary = Color(0xFF4F46E5);
+  static const Color lightSecondary = Color(0xFFEDEFF3);
+  static const Color lightMuted = Color(0xFF626B76);
+  static const Color lightSuccess = Color(0xFF1E9E5A);
+  static const Color lightWarning = Color(0xFFD99E00);
+  static const Color lightDanger = Color(0xFFDC3C43);
 
   // Dark Palette
-  static const Color darkStage = Color(0xFF1F1B18);
-  static const Color darkPaper = Color(0xFF2B2723);
-  static const Color darkCard = Color(0xFF322D28);
-  static const Color darkPopover = Color(0xFF3A342E);
-  static const Color darkInk = Color(0xFFF3EDDF);
-  static const Color darkPrimary = Color(0xFFEE9C21);
-  static const Color darkPrimaryForeground = Color(0xFF211D18);
-  static const Color darkSecondary = Color(0x4F4A423A);
-  static const Color darkMuted = Color(0xFFAFA79D);
-  static const Color darkSuccess = Color(0xFF67BD54);
-  static const Color darkWarning = Color(0xFFF9DC56);
-  static const Color darkDanger = Color(0xFFEC5855);
-  static const Color darkBorder = Color(0x1FF3EDDF);
-  static const Color darkInput = Color(0x29F3EDDF);
+  static const Color darkStage = Color(0xFF0F1115);
+  static const Color darkPaper = Color(0xFF16181E);
+  static const Color darkCard = Color(0xFF1B1E25);
+  static const Color darkPopover = Color(0xFF23262E);
+  static const Color darkInk = Color(0xFFECEEF2);
+  static const Color darkPrimary = Color(0xFF949BFA);
+  static const Color darkPrimaryForeground = Color(0xFF12141B);
+  static const Color darkSecondary = Color(0xFF22252C);
+  static const Color darkMuted = Color(0xFF9CA3AE);
+  static const Color darkSuccess = Color(0xFF45C878);
+  static const Color darkWarning = Color(0xFFF2C14E);
+  static const Color darkDanger = Color(0xFFF36D68);
+  static const Color darkBorder = Color(0x24ECEEF2); // ink @ 14 % opacity
+  static const Color darkInput = Color(0x2EECEEF2); // ink @ 18 % opacity
 
   // Context-aware convenience getters
   static Color getStage(BuildContext context) {

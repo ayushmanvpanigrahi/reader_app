@@ -93,6 +93,13 @@ class IngestStatus(BaseModel):
     created_at: datetime
 
 
+class BookIndexInfo(BaseModel):
+    book_id: str
+    title: str = ""
+    chunks: int = 0
+    embedded: bool = False
+
+
 class Citation(BaseModel):
     title: str
     chapter: str

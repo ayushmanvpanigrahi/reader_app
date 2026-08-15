@@ -2,7 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/widgets/neumorphic_card.dart';
+import '../../../../core/widgets/surface_card.dart';
 import '../../data/models/daily_usage_bucket.dart';
 
 /// Compact neomorphic bar chart of per-day token usage over the last N days.
@@ -28,9 +28,8 @@ class UsageSparkline extends StatelessWidget {
     final maxVal = values.fold<double>(0, (a, b) => a > b ? a : b);
     final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
 
-    return NeumorphicCard(
+    return SurfaceCard(
       borderRadius: 20,
-      depth: 3.5,
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

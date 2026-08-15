@@ -21,6 +21,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+APP_VERSION = "0.1.0"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -38,4 +40,4 @@ app.include_router(providers.router, prefix=settings.API_V1_PREFIX)
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "app": settings.APP_NAME}
+    return {"status": "ok", "app": settings.APP_NAME, "version": APP_VERSION}

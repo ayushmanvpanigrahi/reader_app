@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/widgets/neumorphic_card.dart';
+import '../../../../core/widgets/surface_card.dart';
 import '../../data/models/rate_limit_snapshot.dart';
 import '../../data/services/rate_limit_parser.dart';
 
@@ -41,9 +41,8 @@ class _RateLimitRingState extends State<RateLimitRing> {
     final snapshot = widget.snapshot;
 
     if (snapshot == null || snapshot.isEmpty) {
-      return NeumorphicCard(
+      return SurfaceCard(
         borderRadius: 20,
-        depth: 3.5,
         padding: const EdgeInsets.all(18),
         child: Row(
           children: [
@@ -70,9 +69,8 @@ class _RateLimitRingState extends State<RateLimitRing> {
     final requestColor = _statusColor(snapshot.requestUsagePercent, isDark);
     final tokenColor = _statusColor(snapshot.tokenUsagePercent, isDark);
 
-    return NeumorphicCard(
+    return SurfaceCard(
       borderRadius: 20,
-      depth: 3.5,
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

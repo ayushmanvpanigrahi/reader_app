@@ -23,14 +23,14 @@ class NeumorphicDecorations {
       return [
         // Top-left soft highlight
         BoxShadow(
-          color: const Color(0xFF38312B).withValues(alpha: 0.7 * intensity),
+          color: const Color(0xFF2A2E36).withValues(alpha: 0.7 * intensity),
           offset: Offset(-depth, -depth),
           blurRadius: depth * 2.2,
           spreadRadius: spread,
         ),
         // Bottom-right deep ambient shadow
         BoxShadow(
-          color: const Color(0xFF0D0B0A).withValues(alpha: 0.85 * intensity),
+          color: const Color(0xFF07080B).withValues(alpha: 0.85 * intensity),
           offset: Offset(depth, depth),
           blurRadius: depth * 2.2,
           spreadRadius: spread,
@@ -45,9 +45,9 @@ class NeumorphicDecorations {
           blurRadius: depth * 2.0,
           spreadRadius: spread,
         ),
-        // Bottom-right warm shadow
+        // Bottom-right cool shadow
         BoxShadow(
-          color: const Color(0xFFC7C0B6).withValues(alpha: 0.65 * intensity),
+          color: const Color(0xFFC9CDD4).withValues(alpha: 0.6 * intensity),
           offset: Offset(depth, depth),
           blurRadius: depth * 2.0,
           spreadRadius: spread,
@@ -64,12 +64,12 @@ class NeumorphicDecorations {
     if (isDark) {
       return [
         BoxShadow(
-          color: const Color(0xFF0F0D0B).withValues(alpha: 0.6),
+          color: const Color(0xFF090A0D).withValues(alpha: 0.6),
           offset: Offset(-depth * 0.7, -depth * 0.7),
           blurRadius: depth * 1.5,
         ),
         BoxShadow(
-          color: const Color(0xFF342E28).withValues(alpha: 0.4),
+          color: const Color(0xFF2C3038).withValues(alpha: 0.4),
           offset: Offset(depth * 0.7, depth * 0.7),
           blurRadius: depth * 1.5,
         ),
@@ -77,7 +77,7 @@ class NeumorphicDecorations {
     } else {
       return [
         BoxShadow(
-          color: const Color(0xFFD6CFC6).withValues(alpha: 0.7),
+          color: const Color(0xFFC9CDD4).withValues(alpha: 0.7),
           offset: Offset(-depth * 0.7, -depth * 0.7),
           blurRadius: depth * 1.5,
         ),
@@ -104,12 +104,12 @@ class NeumorphicDecorations {
           end: Alignment.bottomRight,
           colors: isDark
               ? [
-                  const Color(0xFF3A342E),
-                  const Color(0xFF2C2723),
+                  const Color(0xFF262A32),
+                  const Color(0xFF1C2026),
                 ]
               : [
                   const Color(0xFFFFFFFF),
-                  const Color(0xFFF3EFE9),
+                  const Color(0xFFF1F2F4),
                 ],
         );
       case NeumorphicShape.debossed:
@@ -118,12 +118,12 @@ class NeumorphicDecorations {
           end: Alignment.bottomRight,
           colors: isDark
               ? [
-                  const Color(0xFF1B1715),
-                  const Color(0xFF28231F),
+                  const Color(0xFF14171C),
+                  const Color(0xFF1D2128),
                 ]
               : [
-                  const Color(0xFFE4DFD7),
-                  const Color(0xFFF7F4EE),
+                  const Color(0xFFE0E2E7),
+                  const Color(0xFFF6F7F9),
                 ],
         );
       case NeumorphicShape.accent:
@@ -137,7 +137,7 @@ class NeumorphicDecorations {
                 ]
               : [
                   AppColors.lightPrimary,
-                  const Color(0xFFD46911),
+                  const Color(0xFF3A33B8),
                 ],
         );
       case NeumorphicShape.flat:

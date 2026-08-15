@@ -54,6 +54,24 @@ class RagConfig {
   }
 }
 
+/// Result of a backend health probe.
+@immutable
+class RagHealth {
+  final bool ok;
+  final int latencyMs;
+  final String app;
+  final String? version;
+  final String? error;
+
+  const RagHealth({
+    this.ok = false,
+    this.latencyMs = 0,
+    this.app = '',
+    this.version,
+    this.error,
+  });
+}
+
 enum RagBookStatus { notIndexed, ingesting, completed, failed }
 
 @immutable

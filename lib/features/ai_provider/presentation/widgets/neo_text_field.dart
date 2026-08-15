@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/neumorphic_decorations.dart';
 
-/// The app's standard debossed neomorphic text field, reused across the
-/// provider add/edit flow and the model picker.
+/// Flat Material text field with label and optional inline error,
+/// replacing the debossed neomorphic field used by the old provider screens.
 class NeoTextField extends StatefulWidget {
   final String label;
   final String hint;
@@ -16,6 +15,8 @@ class NeoTextField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final ValueChanged<String>? onSubmitted;
   final Widget? suffix;
+  final String? errorText;
+  final String? helperText;
 
   const NeoTextField({
     super.key,
@@ -29,6 +30,8 @@ class NeoTextField extends StatefulWidget {
     required this.onChanged,
     this.onSubmitted,
     this.suffix,
+    this.errorText,
+    this.helperText,
   });
 
   @override
@@ -37,11 +40,13 @@ class NeoTextField extends StatefulWidget {
 
 class _NeoTextFieldState extends State<NeoTextField> {
   late final TextEditingController _controller;
+  late bool _obscured;
 
   @override
   void initState() {
     super.initState();
     _controller = widget.controller ?? TextEditingController(text: widget.initialValue);
+    _obscured = widget.obscure;
   }
 
   @override
@@ -61,51 +66,45 @@ class _NeoTextFieldState extends State<NeoTextField> {
           widget.label,
           style: TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
           ),
         ),
         const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: NeumorphicDecorations.boxDecoration(
-            context: context,
-            shape: NeumorphicShape.debossed,
-            borderRadius: 14,
-            depth: 2.5,
+        TextField(
+          controller: _controller,
+          obscureText: _obscured,
+          keyboardType: widget.keyboardType,
+          textInputAction: widget.textInputAction,
+          autocorrect: false,
+          enableSuggestions: false,
+          style: TextStyle(
+            fontSize: 14,
+            color: isDark ? AppColors.darkInk : AppColors.lightInk,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  obscureText: widget.obscure,
-                  keyboardType: widget.keyboardType,
-                  textInputAction: widget.textInputAction,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? AppColors.darkInk : AppColors.lightInk,
-                  ),
-                  onChanged: widget.onChanged,
-                  onSubmitted: widget.onSubmitted,
-                  decoration: InputDecoration(
-                    hintText: widget.hint,
-                    hintStyle: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? AppColors.darkMuted.withValues(alpha: 0.6)
-                          : AppColors.lightMuted.withValues(alpha: 0.6),
+          onChanged: widget.onChanged,
+          onSubmitted: widget.onSubmitted,
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: isDark
+                  ? AppColors.darkMuted.withValues(alpha: 0.7)
+                  : AppColors.lightMuted.withValues(alpha: 0.7),
+            ),
+            errorText: widget.errorText,
+            errorMaxLines: 3,
+            helperText: widget.helperText,
+            suffixIcon: widget.obscure
+                ? IconButton(
+                    icon: Icon(
+                      _obscured ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                      size: 19,
+                      color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
                     ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              if (widget.suffix != null) widget.suffix!,
-            ],
+                    onPressed: () => setState(() => _obscured = !_obscured),
+                  )
+                : widget.suffix,
           ),
         ),
       ],

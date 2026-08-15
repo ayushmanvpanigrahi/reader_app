@@ -52,6 +52,60 @@ class RagService {
     }
   }
 
+  /// Probes `/health` and reports reachability, latency and backend identity.
+  Future<RagHealth> healthDetail() async {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: _store.getConfig().baseUrl,
+        connectTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 20),
+      ),
+    );
+    try {
+      final stopwatch = Stopwatch()..start();
+      final resp = await dio.get<dynamic>('/health');
+      stopwatch.stop();
+      final data = resp.data is Map<String, dynamic> ? resp.data as Map<String, dynamic> : const <String, dynamic>{};
+      return RagHealth(
+        ok: resp.statusCode == 200,
+        latencyMs: stopwatch.elapsedMilliseconds,
+        app: (data['app'] as String?) ?? '',
+        version: data['version'] as String?,
+        error: resp.statusCode == 200 ? null : 'Backend responded with HTTP ${resp.statusCode}.',
+      );
+    } on DioException catch (e) {
+      return RagHealth(ok: false, error: _friendlyError(e));
+    } catch (e) {
+      return RagHealth(ok: false, error: '$e');
+    }
+  }
+
+  /// Server-side truth for indexed books of the current user.
+  Future<List<Map<String, dynamic>>> listIndexedBooks() async {
+    final token = await _token();
+    final resp = await _dio().get(
+      '/api/v1/ingest/books',
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    final data = resp.data;
+    if (data is List) return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return [];
+  }
+
+  String _friendlyError(DioException e) {
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      return 'Connection timed out. Check the URL and your network.';
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return 'Could not connect. Is the backend running?';
+    }
+    final status = e.response?.statusCode;
+    if (status != null) return 'Backend error (HTTP $status).';
+    return 'Network error: ${e.message ?? 'unknown'}';
+  }
+
   Future<void> syncProviders(List<RagProvider> providers) async {
     final token = await _token();
     await _dio().post(

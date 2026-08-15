@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/theme/neumorphic_decorations.dart';
 import '../../data/models/ai_model_info.dart';
 import '../extensions.dart';
 
-/// Model selection sheet: neomorphic modal bottom sheet with live filtering.
+/// Model selection sheet: modal bottom sheet with live filtering.
 /// Returns the selected model id, or null if dismissed.
 class ModelPickerSheet {
   static Future<String?> show(
@@ -101,11 +100,12 @@ class _ModelPickerSheet extends HookWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-              decoration: NeumorphicDecorations.boxDecoration(
-                context: context,
-                shape: NeumorphicShape.debossed,
-                borderRadius: 14,
-                depth: 2.5,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkInput : AppColors.secondary,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.border,
+                ),
               ),
               child: TextField(
                 controller: search,

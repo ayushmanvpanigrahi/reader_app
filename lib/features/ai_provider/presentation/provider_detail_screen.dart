@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/neumorphic_button.dart';
-import '../../../core/widgets/neumorphic_card.dart';
+import '../../../core/widgets/status_banner.dart';
+import '../../../core/widgets/surface_card.dart';
 import '../data/models/ai_model_info.dart';
 import '../data/models/ai_provider.dart';
 import '../data/models/usage_stats.dart';
+import '../data/services/model_fetcher.dart';
 import '../domain/notifiers/active_provider_notifier.dart';
 import '../domain/notifiers/provider_list_notifier.dart';
 import '../domain/providers.dart';
@@ -26,16 +27,18 @@ class ProviderDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
+  bool _retesting = false;
+  String? _retestResult;
+  bool _retestSucceeded = false;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final providerAsync = ref.watch(providerListProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.getStage(context),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.getStage(context),
-        elevation: 0,
         title: const Text('Provider', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           IconButton(
@@ -60,22 +63,101 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
         data: (providers) {
           final matches = providers.where((p) => p.id == widget.providerId).toList();
           if (matches.isEmpty) return const _MissingProvider();
-          return _DetailBody(providerId: matches.first.id);
+          return _DetailBody(
+            providerId: matches.first.id,
+            retesting: _retesting,
+            retestResult: _retestResult,
+            retestSucceeded: _retestSucceeded,
+            onRetest: _retest,
+          );
         },
       ),
     );
+  }
+
+  Future<void> _retest() async {
+    setState(() {
+      _retesting = true;
+      _retestResult = null;
+    });
+    try {
+      final repo = ref.read(providerRepositoryProvider);
+      final provider = repo.byId(widget.providerId);
+      if (provider == null) {
+        setState(() {
+          _retestResult = 'Provider no longer exists.';
+          _retestSucceeded = false;
+        });
+        return;
+      }
+      final key = await repo.apiKey(provider.id);
+      final models = await ModelFetcher.fetch(baseUrl: provider.baseUrl, apiKey: key ?? '');
+      final updated = provider.copyWith(
+        lastStatusName: ConnectionStatus.connected.name,
+        lastTestedAt: DateTime.now().toUtc(),
+        cachedModelIds: models.models.isNotEmpty
+            ? [for (final m in models.models) m.id]
+            : provider.cachedModelIds,
+      );
+      await repo.save(updated);
+      if (models.models.isNotEmpty) {
+        await ref.read(modelRepositoryProvider).cache(provider.id, models.models);
+      }
+      ref.read(providerListProvider.notifier).refresh();
+      setState(() {
+        _retestSucceeded = true;
+        _retestResult =
+            'Connected in ${models.latencyMs}ms · ${models.models.length} models available.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _retestSucceeded = false;
+        _retestResult = _friendlyError(e);
+      });
+    } finally {
+      if (mounted) setState(() => _retesting = false);
+    }
+  }
+
+  String _friendlyError(Object e) {
+    final s = e.toString();
+    if (s.contains('401') || s.toLowerCase().contains('unauthorized')) {
+      return 'Authentication failed (401). Check the API key.';
+    }
+    if (s.contains('403')) return 'Access forbidden (403).';
+    if (s.contains('404')) return 'Endpoint not found (404). Check the base URL.';
+    if (s.contains('SocketException') || s.toLowerCase().contains('connection')) {
+      return 'Could not connect. Is the endpoint reachable?';
+    }
+    if (s.contains('Timeout') || s.contains('timed out')) {
+      return 'Connection timed out.';
+    }
+    return 'Connection failed: $e';
   }
 }
 
 class _DetailBody extends ConsumerWidget {
   final String providerId;
+  final bool retesting;
+  final String? retestResult;
+  final bool retestSucceeded;
+  final VoidCallback onRetest;
 
-  const _DetailBody({required this.providerId});
+  const _DetailBody({
+    required this.providerId,
+    required this.retesting,
+    required this.retestResult,
+    required this.retestSucceeded,
+    required this.onRetest,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final provider = ref.watch(providerListProvider).value!
+    final provider = ref
+        .watch(providerListProvider)
+        .value!
         .firstWhere((p) => p.id == providerId);
     final active = ref.watch(activeProviderProvider).value;
     final isActive = active?.provider?.id == providerId;
@@ -83,7 +165,15 @@ class _DetailBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        _HeaderCard(provider: provider, isActive: isActive, isDark: isDark),
+        _HeaderCard(
+          provider: provider,
+          isActive: isActive,
+          isDark: isDark,
+          retesting: retesting,
+          retestResult: retestResult,
+          retestSucceeded: retestSucceeded,
+          onRetest: onRetest,
+        ),
         const SizedBox(height: 16),
         _ModelsSection(providerId: providerId, isDark: isDark),
         const SizedBox(height: 16),
@@ -101,29 +191,44 @@ class _HeaderCard extends ConsumerWidget {
   final AIProvider provider;
   final bool isActive;
   final bool isDark;
+  final bool retesting;
+  final String? retestResult;
+  final bool retestSucceeded;
+  final VoidCallback onRetest;
 
-  const _HeaderCard({required this.provider, required this.isActive, required this.isDark});
+  const _HeaderCard({
+    required this.provider,
+    required this.isActive,
+    required this.isDark,
+    required this.retesting,
+    required this.retestResult,
+    required this.retestSucceeded,
+    required this.onRetest,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accent = provider.type.accent(isDark);
-    return NeumorphicCard(
-      borderRadius: 22,
-      depth: 4.5,
-      padding: const EdgeInsets.all(18),
+    return SurfaceCard(
+      borderRadius: 18,
+      borderColor: isActive ? accent.withValues(alpha: 0.5) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: accent.withValues(alpha: 0.12),
+                  gradient: LinearGradient(
+                    colors: [accent, accent.withValues(alpha: 0.7)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
-                child: Icon(provider.type.icon, color: accent, size: 26),
+                child: Icon(provider.type.icon, color: Colors.white, size: 24),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -133,7 +238,7 @@ class _HeaderCard extends ConsumerWidget {
                     Text(
                       provider.displayName,
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: isDark ? AppColors.darkInk : AppColors.lightInk,
                       ),
@@ -149,18 +254,20 @@ class _HeaderCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              NeumorphicButton.icon(
-                icon: isActive ? Icons.star_rounded : Icons.star_border_rounded,
+              IconButton(
                 onPressed: isActive
                     ? null
                     : () => ref.read(activeProviderProvider.notifier).setActiveProvider(provider.id),
-                isSelected: isActive,
-                size: 44,
+                icon: Icon(
+                  isActive ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: isActive ? accent : (isDark ? AppColors.darkMuted : AppColors.lightMuted),
+                  size: 24,
+                ),
                 tooltip: isActive ? 'Active provider' : 'Set as active',
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
             provider.baseUrl,
             overflow: TextOverflow.ellipsis,
@@ -169,23 +276,43 @@ class _HeaderCard extends ConsumerWidget {
               color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
               _StatusPillDetail(
                 color: provider.lastStatus.color(isDark),
-                label: 'Status: ${provider.lastStatus.label}',
+                label: provider.lastStatus.label,
               ),
               const SizedBox(width: 10),
               if (provider.lastTestedAt != null)
                 Text(
-                  'Tested ${provider.lastTestedAt!.toLocal()}',
+                  'Tested ${provider.lastTestedAt!.toLocal().toString().substring(0, 16)}',
                   style: TextStyle(
                     fontSize: 11,
                     color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
                   ),
                 ),
             ],
+          ),
+          const SizedBox(height: 12),
+          if (retestResult != null) ...[
+            StatusBanner(
+              tone: retestSucceeded ? StatusTone.success : StatusTone.error,
+              title: retestSucceeded ? 'Re-test successful' : 'Re-test failed',
+              message: retestResult,
+            ),
+            const SizedBox(height: 12),
+          ],
+          OutlinedButton.icon(
+            onPressed: retesting ? null : onRetest,
+            icon: retesting
+                ? const SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.wifi_tethering_rounded, size: 17),
+            label: Text(retesting ? 'Re-testing…' : 'Test connection'),
           ),
         ],
       ),
@@ -202,7 +329,7 @@ class _StatusPillDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
@@ -234,7 +361,9 @@ class _ModelsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final provider = ref.watch(providerListProvider).value!
+    final provider = ref
+        .watch(providerListProvider)
+        .value!
         .firstWhere((p) => p.id == providerId);
     final active = ref.watch(activeProviderProvider).value;
     final isActive = active?.provider?.id == providerId;
@@ -243,30 +372,14 @@ class _ModelsSection extends ConsumerWidget {
     final cachedModels = ref.watch(modelRepositoryProvider).cached(providerId) ?? const [];
     final info = {for (final m in cachedModels) m.id: m};
 
-    return NeumorphicCard(
-      borderRadius: 20,
-      depth: 3.5,
-      padding: const EdgeInsets.all(18),
+    return SurfaceCard(
+      borderRadius: 18,
+      title: 'Models',
+      subtitle: '${modelIds.length} cached from this endpoint',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Models',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: isDark ? AppColors.darkInk : AppColors.lightInk,
-            ),
-          ),
           const SizedBox(height: 4),
-          Text(
-            '${modelIds.length} cached from this endpoint',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-            ),
-          ),
-          const SizedBox(height: 14),
           _ModelSelectorRow(
             label: 'Chat model',
             icon: Icons.chat_bubble_rounded,
@@ -277,7 +390,7 @@ class _ModelsSection extends ConsumerWidget {
             info: info,
             onPick: (id) => ref.read(activeProviderProvider.notifier).selectChatModel(id),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _ModelSelectorRow(
             label: 'Embedding model',
             icon: Icons.grain_rounded,
@@ -317,7 +430,7 @@ class _ModelSelectorRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
+    return InkWell(
       onTap: isActive
           ? () async {
               final picked = await ModelPickerSheet.show(
@@ -330,11 +443,12 @@ class _ModelSelectorRow extends ConsumerWidget {
               if (picked != null) onPick(picked);
             }
           : null,
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: (isDark ? AppColors.darkInput : AppColors.secondary).withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
@@ -419,7 +533,9 @@ class _FallbackSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final provider = ref.watch(providerListProvider).value!
+    final provider = ref
+        .watch(providerListProvider)
+        .value!
         .firstWhere((p) => p.id == providerId);
     final order = provider.fallbackOrder;
 
@@ -429,42 +545,13 @@ class _FallbackSection extends ConsumerWidget {
         return pa.compareTo(pb);
       });
 
-    return NeumorphicCard(
-      borderRadius: 20,
-      depth: 3.5,
-      padding: const EdgeInsets.all(18),
+    return SurfaceCard(
+      borderRadius: 18,
+      title: 'Fallback Priority',
+      subtitle: 'Reorder to control which models the auto-switch tries first.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                'Fallback Priority',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? AppColors.darkInk : AppColors.lightInk,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${order.length} ranked',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Reorder to control which models the auto-switch tries first.',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-            ),
-          ),
-          const SizedBox(height: 10),
           if (sortedIds.isEmpty)
             Text(
               'No cached models yet. Fetch the catalog from the edit screen first.',
@@ -579,41 +666,22 @@ class _DangerZone extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return NeumorphicCard(
-      borderRadius: 20,
-      depth: 3,
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Danger Zone',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: isDark ? AppColors.darkDanger : AppColors.lightDanger,
-            ),
+    final dangerColor = isDark ? AppColors.darkDanger : AppColors.lightDanger;
+    return SurfaceCard(
+      borderRadius: 18,
+      borderColor: dangerColor.withValues(alpha: 0.4),
+      title: 'Danger Zone',
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: OutlinedButton.icon(
+          onPressed: () => _confirmDelete(context, ref),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: dangerColor,
+            side: BorderSide(color: dangerColor.withValues(alpha: 0.5)),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _confirmDelete(context, ref),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: isDark ? AppColors.darkDanger : AppColors.lightDanger,
-                    side: BorderSide(
-                      color: (isDark ? AppColors.darkDanger : AppColors.lightDanger)
-                          .withValues(alpha: 0.5),
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Delete provider'),
-                ),
-              ),
-            ],
-          ),
-        ],
+          icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          label: const Text('Delete provider'),
+        ),
       ),
     );
   }
@@ -622,8 +690,6 @@ class _DangerZone extends ConsumerWidget {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.getCard(dialogContext),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete provider?'),
         content: Text(
           'Remove "${provider.displayName}" and its saved API key?',

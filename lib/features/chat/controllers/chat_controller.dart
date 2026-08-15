@@ -16,6 +16,9 @@ class ChatState {
   final bool isStreaming;
   final String? error;
 
+  /// Transient message shown once as a snackbar (auto-cleared afterwards).
+  final String? notice;
+
   /// App book id selected for RAG context (null = generic chat).
   final String? ragBookId;
   final String? ragBookTitle;
@@ -25,6 +28,7 @@ class ChatState {
     this.messages = const [],
     this.isStreaming = false,
     this.error,
+    this.notice,
     this.ragBookId,
     this.ragBookTitle,
     this.ragMeta,
@@ -34,15 +38,18 @@ class ChatState {
     List<ChatMessage>? messages,
     bool? isStreaming,
     String? error,
+    String? notice,
     String? ragBookId,
     String? ragBookTitle,
     RagChatMeta? ragMeta,
     bool clearRagMeta = false,
+    bool clearNotice = false,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
       isStreaming: isStreaming ?? this.isStreaming,
       error: error ?? this.error,
+      notice: clearNotice ? null : (notice ?? this.notice),
       ragBookId: ragBookId ?? this.ragBookId,
       ragBookTitle: ragBookTitle ?? this.ragBookTitle,
       ragMeta: clearRagMeta ? null : (ragMeta ?? this.ragMeta),
@@ -70,6 +77,13 @@ class ChatController extends StateNotifier<ChatState> {
 
   void clear() {
     state = const ChatState();
+  }
+
+  /// Clears the transient snackbar notice once it has been shown.
+  void clearNotice() {
+    if (state.notice != null) {
+      state = state.copyWith(clearNotice: true);
+    }
   }
 
   Future<void> selectRagBook(String? bookId, String? bookTitle) async {
@@ -101,6 +115,11 @@ class ChatController extends StateNotifier<ChatState> {
         await _sendWithRag(text, backendId, ragBookId, state.ragBookTitle ?? '');
         return;
       }
+      state = state.copyWith(
+        notice:
+            '“${state.ragBookTitle ?? 'Selected book'}” is not indexed yet — '
+            'answering without book context. Select it in the RAG bar to index it.',
+      );
     }
 
     await _sendDirect(trimmed, provider.id);
@@ -255,6 +274,7 @@ class ChatController extends StateNotifier<ChatState> {
     final citations = <RagCitation>[];
     var retrieved = 0;
     var grounded = true;
+    String? ragError;
 
     try {
       final providerId = _ref.read(activeProviderProvider).value?.provider?.id;
@@ -272,6 +292,15 @@ class ChatController extends StateNotifier<ChatState> {
             retrieved = (event.data as num?)?.toInt() ?? 0;
           case 'status':
             statuses.add(event.data as String);
+          case 'error':
+            final d = event.data;
+            final msg = d is Map<String, dynamic>
+                ? (d['detail']?.toString() ??
+                    d['message']?.toString() ??
+                    'RAG request failed')
+                : d.toString();
+            ragError = msg;
+            statuses.add('Error: $msg');
           case 'provider_used':
             final d = event.data as Map<String, dynamic>;
             final p = d['provider'] as String? ?? '';
@@ -290,11 +319,21 @@ class ChatController extends StateNotifier<ChatState> {
         state = _patchMessage(assistantId, buffer, isStreaming: true);
       }
       meta = meta.copyWith(retrieved: retrieved, grounded: grounded, statuses: statuses, citations: citations);
+
+      final finalContent =
+          (buffer.isEmpty && ragError != null) ? '⚠️ $ragError' : buffer;
       state = ChatState(
         messages: [
           for (final m in state.messages)
-            if (m.id == assistantId) m.copyWith(content: buffer, isStreaming: false) else m,
+            if (m.id == assistantId)
+              m.copyWith(content: finalContent, isStreaming: false)
+            else
+              m,
         ],
+        error: ragError,
+        notice: ragError != null
+            ? 'RAG failed: $ragError'
+            : state.notice,
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
         ragMeta: meta,
@@ -307,6 +346,7 @@ class ChatController extends StateNotifier<ChatState> {
             if (m.id == assistantId) m.copyWith(content: finalContent, isStreaming: false) else m,
         ],
         error: buffer.isEmpty ? '$e' : null,
+        notice: 'RAG failed: $e',
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
         ragMeta: meta.copyWith(statuses: [...statuses, '$e']),

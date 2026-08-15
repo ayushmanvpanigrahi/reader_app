@@ -24,6 +24,9 @@ class RagState {
   final bool checking;
   final Map<String, RagBookIndex> books;
   final String? error;
+  final RagHealth? lastHealth;
+  final DateTime? lastCheckedAt;
+  final List<Map<String, dynamic>> backendBooks;
 
   const RagState({
     this.enabled = false,
@@ -32,7 +35,13 @@ class RagState {
     this.checking = false,
     this.books = const {},
     this.error,
+    this.lastHealth,
+    this.lastCheckedAt,
+    this.backendBooks = const [],
   });
+
+  int get indexedCount =>
+      books.values.where((b) => b.status == RagBookStatus.completed).length;
 
   RagState copyWith({
     bool? enabled,
@@ -41,6 +50,10 @@ class RagState {
     bool? checking,
     Map<String, RagBookIndex>? books,
     String? error,
+    RagHealth? lastHealth,
+    DateTime? lastCheckedAt,
+    List<Map<String, dynamic>>? backendBooks,
+    bool clearError = false,
   }) {
     return RagState(
       enabled: enabled ?? this.enabled,
@@ -48,7 +61,10 @@ class RagState {
       connected: connected ?? this.connected,
       checking: checking ?? this.checking,
       books: books ?? this.books,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
+      lastHealth: lastHealth ?? this.lastHealth,
+      lastCheckedAt: lastCheckedAt ?? this.lastCheckedAt,
+      backendBooks: backendBooks ?? this.backendBooks,
     );
   }
 
@@ -103,18 +119,95 @@ class RagController extends StateNotifier<RagState> {
       baseUrl: baseUrl ?? state.baseUrl,
     );
     await _store.setConfig(RagConfig(enabled: next.enabled, baseUrl: next.baseUrl));
-    state = state.copyWith(enabled: next.enabled, baseUrl: next.baseUrl);
+    state = state.copyWith(
+      enabled: next.enabled,
+      baseUrl: next.baseUrl,
+      error: next.enabled ? state.error : null,
+      connected: next.enabled ? state.connected : false,
+    );
+  }
+
+  /// Enables/disables RAG. Turning it on re-tests the backend connection.
+  Future<void> setRagEnabled(bool enabled) async {
+    await updateConfig(enabled: enabled);
+    if (enabled) {
+      await testConnection();
+    }
   }
 
   Future<void> testConnection() async {
-    state = state.copyWith(checking: true, error: null);
-    final ok = await _service.health();
+    state = state.copyWith(checking: true, clearError: true);
+    final health = await _service.healthDetail();
     state = state.copyWith(
       checking: false,
-      connected: ok,
-      error: ok ? null : 'Cannot reach backend at ${state.baseUrl}',
+      connected: health.ok,
+      lastHealth: health,
+      lastCheckedAt: DateTime.now(),
+      error: health.ok ? null : health.error,
     );
-    if (ok) await syncProviders();
+    if (health.ok) {
+      await syncProviders();
+      await refreshIndexStatus();
+    }
+  }
+
+  /// Fetches server-side indexed books and merges them with local tracking so
+  /// the UI can always confirm exactly which books have been indexed.
+  Future<void> refreshIndexStatus() async {
+    if (!state.connected) return;
+    try {
+      final serverBooks = await _service.listIndexedBooks();
+      final merged = Map<String, RagBookIndex>.from(state.books);
+      for (final book in serverBooks) {
+        final backendId = (book['book_id'] as String?) ?? '';
+        if (backendId.isEmpty) continue;
+        final existing =
+            merged.entries.where((e) => e.value.backendBookId == backendId).toList();
+        if (existing.isEmpty) {
+          // Indexed on the server but not tracked locally yet.
+          merged[backendId] = RagBookIndex(
+            status: RagBookStatus.completed,
+            backendBookId: backendId,
+            progress: 1,
+          );
+        }
+      }
+      state = state.copyWith(backendBooks: serverBooks, books: merged);
+    } catch (_) {
+      // Non-fatal: local book mapping still works.
+    }
+  }
+
+  /// Re-runs ingestion for a book that previously failed or was never indexed.
+  Future<void> retryIngest(BookModel book) async {
+    await ensureSession();
+    if (!state.connected) {
+      state = state.copyWith(error: 'Backend unreachable — cannot re-index.');
+      return;
+    }
+    await ingestBook(book, force: true);
+  }
+
+  Future<void> ensureSession() async {
+    if (state.connected) {
+      return;
+    }
+    final health = await _service.healthDetail();
+    if (!health.ok) {
+      state = state.copyWith(
+        connected: false,
+        lastHealth: health,
+        lastCheckedAt: DateTime.now(),
+        error: health.error ?? 'RAG backend unreachable. Start it with `runapp`.',
+      );
+      return;
+    }
+    try {
+      state = state.copyWith(connected: true, lastHealth: health, lastCheckedAt: DateTime.now(), error: null);
+      await syncProviders();
+    } catch (_) {
+      state = state.copyWith(connected: false, error: 'RAG session failed.');
+    }
   }
 
   /// Push every provider configured in the app (base URL + key + selected
@@ -145,24 +238,6 @@ class RagController extends StateNotifier<RagState> {
     }
   }
 
-  Future<void> ensureSession() async {
-    if (state.connected) {
-      return;
-    }
-    final ok = await _service.health();
-    if (!ok) {
-      state = state.copyWith(connected: false, error: 'RAG backend unreachable. Start it with `runapp`.');
-      return;
-    }
-    try {
-      await _service.health();
-      state = state.copyWith(connected: true, error: null);
-      await syncProviders();
-    } catch (_) {
-      state = state.copyWith(connected: false, error: 'RAG session failed.');
-    }
-  }
-
   RagBookIndex indexFor(String appBookId) {
     return state.books[appBookId] ?? const RagBookIndex();
   }
@@ -177,13 +252,22 @@ class RagController extends StateNotifier<RagState> {
     return state.enabled && state.connected && backendBookIdFor(appBookId) != null;
   }
 
-  Future<void> ingestBook(BookModel book) async {
+  Future<void> ingestBook(BookModel book, {bool force = false}) async {
     if (!state.enabled) return;
     final existing = state.books[book.id];
-    if (existing?.status == RagBookStatus.completed || existing?.status == RagBookStatus.ingesting) {
+    if (!force &&
+        (existing?.status == RagBookStatus.completed || existing?.status == RagBookStatus.ingesting)) {
       return;
     }
-    if (book.filePath.isEmpty || !File(book.filePath).existsSync()) return;
+    if (book.filePath.isEmpty || !File(book.filePath).existsSync()) {
+      state = state.copyWith(
+        books: {
+          ...state.books,
+          book.id: RagBookIndex(status: RagBookStatus.failed, error: 'Book file not found on device.'),
+        },
+      );
+      return;
+    }
 
     await ensureSession();
     if (!state.connected) return;

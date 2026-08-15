@@ -6,7 +6,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import get_current_user_id
 from app.core.config import settings
-from app.models.schemas import IngestResponse, IngestStatus
+from app.models.schemas import BookIndexInfo, IngestResponse, IngestStatus
+from app.rag.vectorstore import get_vector_store
 from app.services import provider_context
 from app.services.ingest_service import enqueue_ingest, get_task
 
@@ -31,14 +32,34 @@ async def ingest_file(
 
     provider_context.bind_request(user_id=user_id, provider_id=provider_id)
 
+    # Read the file bytes BEFORE returning. Starlette closes UploadFile once the
+    # response is sent, so a background task reading `file.file` afterwards fails
+    # with "I/O operation on closed file" — the cause of every failed ingest.
+    content = await file.read()
+
     task = await enqueue_ingest(
         user_id=user_id,
         filename=file.filename or "untitled",
-        file_reader=file.file,
+        content=content,
         title=title,
         author=author,
     )
     return IngestResponse(task_id=task.task_id)
+
+
+@router.get("/books", response_model=list[BookIndexInfo])
+async def list_indexed_books(user_id: str = Depends(get_current_user_id)) -> list[BookIndexInfo]:
+    """Server-side truth for which books are indexed for this user."""
+    books = await get_vector_store().list_books(user_id)
+    return [
+        BookIndexInfo(
+            book_id=b["book_id"],
+            title=b.get("title") or "",
+            chunks=b.get("chunks") or 0,
+            embedded=bool(b.get("embedded")),
+        )
+        for b in books
+    ]
 
 
 @router.get("/status/{task_id}", response_model=IngestStatus)

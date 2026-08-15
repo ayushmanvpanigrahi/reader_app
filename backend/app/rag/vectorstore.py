@@ -348,6 +348,48 @@ class QdrantHybridStore:
         logger.info("Backfilled dense vectors for %d chunks (user=%s book=%s)", backfilled, user_id, book_id)
         return backfilled
 
+    async def list_books(self, user_id: str) -> list[dict[str, Any]]:
+        """Aggregate per-book stats from the user's collection (server-side truth)."""
+        name = self._collection_name(user_id)
+        if not await self._client.collection_exists(name):
+            return []
+
+        books: dict[str, dict[str, Any]] = {}
+        next_offset: Any = None
+        while True:
+            page = await self._client.scroll(
+                collection_name=name,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+                ),
+                limit=1000,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points, next_offset = page
+            for point in points:
+                payload = point.payload or {}
+                book_id = payload.get("book_id") or ""
+                if not book_id:
+                    continue
+                entry = books.setdefault(
+                    book_id,
+                    {
+                        "book_id": book_id,
+                        "title": payload.get("title") or "",
+                        "chunks": 0,
+                        "embedded": False,
+                    },
+                )
+                entry["chunks"] += 1
+                if payload.get("embedded"):
+                    entry["embedded"] = True
+            if next_offset is None or not points:
+                break
+
+        return list(books.values())
+
     async def delete_book(self, user_id: str, book_id: str) -> None:
         await self._client.delete(
             collection_name=self._collection_name(user_id),
