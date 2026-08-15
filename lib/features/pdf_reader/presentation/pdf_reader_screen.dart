@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_app/core/constants/app_colors.dart';
 import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.dart';
+import 'package:reader_app/features/highlights/presentation/highlight_explanation_sheet.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
 import 'package:reader_app/features/library/data/models/book_model.dart';
+import 'package:reader_app/features/rag/controllers/rag_controller.dart';
+import 'package:reader_app/features/rag/data/rag_models.dart';
 import '../controllers/pdf_reader_controller.dart';
 import 'widgets/pdf_controls_overlay.dart';
 
@@ -25,6 +28,32 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
   void initState() {
     super.initState();
     _pdfController = PdfViewerController();
+    _maybeIngestForRag();
+  }
+
+  void _maybeIngestForRag() {
+    final rag = ref.read(ragControllerProvider);
+    if (!rag.enabled) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(ragControllerProvider.notifier).ingestBook(widget.book);
+    });
+  }
+
+  Future<void> _explainSelection(PdfTextSelectionDelegate selection) async {
+    try {
+      final text = await selection.getSelectedText();
+      if (!mounted || text.trim().isEmpty) return;
+      final state = ref.read(pdfReaderControllerProvider(widget.book.id));
+      await showHighlightExplanationSheet(
+        context,
+        bookId: widget.book.id,
+        bookTitle: widget.book.title,
+        pageNumber: state.currentPage,
+        selectedText: text,
+      );
+    } catch (_) {
+      // Ignore selection failures.
+    }
   }
 
   void _onPageChanged(int page, int totalPages) {
@@ -67,6 +96,22 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
         controller: _pdfController,
         params: PdfViewerParams(
           margin: 8,
+          textSelectionParams: PdfTextSelectionParams(
+            enabled: true,
+            showContextMenuAutomatically: true,
+          ),
+          customizeContextMenuItems: (params, items) {
+            items.add(
+              ContextMenuButtonItem(
+                type: ContextMenuButtonType.custom,
+                label: 'Explain with AI',
+                onPressed: () {
+                  params.dismissContextMenu();
+                  _explainSelection(params.textSelectionDelegate);
+                },
+              ),
+            );
+          },
           onDocumentChanged: (document) {
 
             final pages = document?.pages.length ?? 1;
@@ -154,7 +199,73 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
             },
             onBack: () => Navigator.pop(context),
           ),
+
+          // RAG indexing status chip
+          _ragReaderChip(bookId: widget.book.id, isDark: isDark),
         ],
+      ),
+    );
+  }
+
+  Widget _ragReaderChip({required String bookId, required bool isDark}) {
+    final rag = ref.watch(ragControllerProvider);
+    if (!rag.enabled) return const SizedBox.shrink();
+    final index = rag.indexFor(bookId);
+    if (index.status == RagBookStatus.notIndexed) return const SizedBox.shrink();
+
+    final (text, icon) = switch (index.status) {
+      RagBookStatus.ingesting => (
+          'Indexing for RAG… ${(index.progress * 100).toStringAsFixed(0)}%',
+          Icons.hourglass_top_rounded,
+        ),
+      RagBookStatus.completed => (
+          'Indexed · Ask about this book in Chat',
+          Icons.check_circle_rounded,
+        ),
+      RagBookStatus.failed => ('Index failed', Icons.error_outline_rounded),
+      RagBookStatus.notIndexed => ('', Icons.hub_outlined),
+    };
+    final accent = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 12,
+      child: Center(
+        child: GestureDetector(
+          onTap: () => ref.read(ragControllerProvider.notifier).ingestBook(widget.book),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard.withValues(alpha: 0.9) : AppColors.lightPaper.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: accent.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 14,
+                  color: index.status == RagBookStatus.failed
+                      ? const Color(0xFFE57373)
+                      : accent,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: index.status == RagBookStatus.failed
+                        ? const Color(0xFFE57373)
+                        : (isDark ? AppColors.darkInk : AppColors.lightInk),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

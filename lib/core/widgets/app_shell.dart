@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../features/bookmarks/presentation/bookmarks_screen.dart';
+import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/library/presentation/library_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import 'floating_bottom_bar.dart';
@@ -17,6 +18,7 @@ class _AppShellState extends State<AppShell> {
   final List<Widget> _screens = const [
     LibraryScreen(),
     BookmarksScreen(),
+    ChatScreen(),
     SettingsScreen(),
   ];
 
@@ -30,6 +32,11 @@ class _AppShellState extends State<AppShell> {
       icon: Icons.bookmark_outline_rounded,
       selectedIcon: Icons.bookmark_rounded,
       label: 'Bookmarks',
+    ),
+    FloatingBottomBarItem(
+      icon: Icons.chat_bubble_outline_rounded,
+      selectedIcon: Icons.chat_bubble_rounded,
+      label: 'Chat',
     ),
     FloatingBottomBarItem(
       icon: Icons.settings_outlined,

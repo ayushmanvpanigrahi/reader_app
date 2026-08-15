@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/neumorphic_button.dart';
 import '../../../core/widgets/neumorphic_card.dart';
+import '../../ai_provider/presentation/provider_list_screen.dart';
 
 import '../../../core/widgets/neumorphic_slider.dart';
 import '../../../core/widgets/neumorphic_toggle.dart';
@@ -173,6 +175,76 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 28),
+
+              // AI Provider Configuration Entry
+              _buildSectionHeader('AI Companion', isDark),
+              const SizedBox(height: 12),
+              NeumorphicCard(
+                borderRadius: 20,
+                depth: 3.5,
+                padding: const EdgeInsets.all(18),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProviderListScreen()),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: isDark
+                              ? [AppColors.darkPrimary, AppColors.primary]
+                              : [AppColors.lightPrimary, AppColors.primary],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.smart_toy_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AI Provider Configuration',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Endpoint, models & usage intelligence',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    NeumorphicButton.icon(
+                      icon: Icons.chevron_right_rounded,
+                      size: 40,
+                      iconSize: 18,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ProviderListScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 28),
 

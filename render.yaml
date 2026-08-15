@@ -1,0 +1,34 @@
+# Render Blueprint — deploy the FastAPI backend with one click.
+# Connect this repo to Render, it will read this file and provision the
+# web service. The vector database is Qdrant (this app does NOT use Supabase).
+# Point QDRANT_URL/QDRANT_API_KEY at a Qdrant Cloud cluster (free tier).
+
+services:
+  - type: web
+    name: reader-ai-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      # Non-secret runtime settings (tune in the Render dashboard):
+      - key: DEBUG
+        value: "true"
+      - key: CHAT_MODEL
+        value: gpt-4o-mini
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: RERANKER_PROVIDER
+        value: none
+      - key: VECTOR_STORE
+        value: qdrant
+      - key: QDRANT_URL
+        sync: false # set in dashboard: https://<cluster>.cloud.qdrant.io
+      - key: QDRANT_API_KEY
+        sync: false # set in dashboard (secret)
+      - key: OPENAI_API_KEY
+        sync: false # set in dashboard (secret)
+      - key: JWT_SECRET_KEY
+        sync: false # set in dashboard (secret) — change from the default

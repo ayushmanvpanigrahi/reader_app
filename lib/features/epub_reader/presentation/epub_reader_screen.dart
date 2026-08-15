@@ -8,6 +8,7 @@ import 'package:reader_app/core/widgets/neumorphic_button.dart';
 import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
 import 'package:reader_app/features/library/data/models/book_model.dart';
+import 'package:reader_app/features/rag/controllers/rag_controller.dart';
 import '../controllers/epub_reader_controller.dart';
 import 'widgets/epub_toc_sheet.dart';
 import 'widgets/reader_theme_sheet.dart';
@@ -28,6 +29,15 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
   void initState() {
     super.initState();
     _epubController = EpubController();
+    _maybeIngestForRag();
+  }
+
+  void _maybeIngestForRag() {
+    final rag = ref.read(ragControllerProvider);
+    if (!rag.enabled) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(ragControllerProvider.notifier).ingestBook(widget.book);
+    });
   }
 
   void _syncProgress(double progress) {

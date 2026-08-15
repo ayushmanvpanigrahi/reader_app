@@ -1,0 +1,9 @@
+@echo off
+echo Starting FastAPI Backend...
+start cmd /k "cd /d backend && .venv\Scripts\python -m uvicorn app.main:app --reload"
+
+echo Waiting for backend to start...
+timeout /t 3 /nobreak
+
+echo Starting Flutter App...
+flutter run

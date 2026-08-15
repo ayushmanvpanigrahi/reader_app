@@ -1,12 +1,156 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_app/core/constants/app_colors.dart';
 import 'package:reader_app/core/theme/neumorphic_decorations.dart';
 import 'package:reader_app/features/bookmarks/data/models/bookmark_model.dart';
+import 'package:reader_app/features/chat/presentation/markdown_spans.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
 import 'package:reader_app/features/library/data/models/book_model.dart';
+import 'package:reader_app/features/rag/controllers/rag_controller.dart';
+import 'package:reader_app/features/rag/data/rag_models.dart';
+import 'package:reader_app/features/rag/data/rag_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+TextStyle _styleFor(InlineSpan span) {
+  return (span as TextSpan).style ?? const TextStyle();
+}
 
 void main() {
+  group('MarkdownSpans Tests', () {
+    const base = TextStyle(fontSize: 14);
+
+    test('renders bold with **double asterisks**', () {
+      final spans = MarkdownSpans.build('This is **bold** text', base: base);
+      expect(spans, hasLength(3));
+      expect(_styleFor(spans[0]).fontWeight, isNot(FontWeight.w700));
+      expect(_styleFor(spans[1]).fontWeight, FontWeight.w700);
+      expect(_styleFor(spans[2]).fontWeight, isNot(FontWeight.w700));
+    });
+
+    test('renders italic with *single asterisks*', () {
+      final spans = MarkdownSpans.build('This is *italic* text', base: base);
+      expect(spans, hasLength(3));
+      expect(_styleFor(spans[1]).fontStyle, FontStyle.italic);
+    });
+
+    test('renders bold italic with ***triple asterisks***', () {
+      final spans = MarkdownSpans.build('Some ***bold italic*** words', base: base);
+      final mid = _styleFor(spans[1]);
+      expect(mid.fontWeight, FontWeight.w700);
+      expect(mid.fontStyle, FontStyle.italic);
+    });
+
+    test('renders inline code with backticks', () {
+      final spans = MarkdownSpans.build('Use `code` here', base: base);
+      expect(spans, hasLength(3));
+      expect(_styleFor(spans[1]).fontFamily, 'monospace');
+    });
+
+    test('renders tappable markdown links', () {
+      final spans = MarkdownSpans.build('Visit [OpenAI](https://openai.com) now', base: base);
+      expect(spans, hasLength(3));
+      final linkSpan = spans[1] as TextSpan;
+      expect(linkSpan.text, 'OpenAI');
+      expect(linkSpan.style?.decoration, TextDecoration.underline);
+      expect(linkSpan.recognizer, isA<TapGestureRecognizer>());
+    });
+
+    test('keeps underscores literal', () {
+      final spans = MarkdownSpans.build('snake_case stays as is', base: base);
+      expect(spans, hasLength(1));
+      expect((spans[0] as TextSpan).text, 'snake_case stays as is');
+    });
+
+    test('renders headings and bullet lists', () {
+      final spans = MarkdownSpans.build('# Title\n- item one', base: base);
+      expect(spans.length, greaterThanOrEqualTo(4));
+      expect((spans[0] as TextSpan).text, 'Title');
+      expect(_styleFor(spans[0]).fontWeight, FontWeight.w800);
+    });
+  });
+
+  group('RagState Tests', () {
+    test('indexFor returns a default for unknown books', () {
+      const state = RagState();
+      final idx = state.indexFor('nope');
+      expect(idx.status, RagBookStatus.notIndexed);
+      expect(idx.backendBookId, isNull);
+    });
+
+    test('canRagFor requires enabled + connected + indexed', () {
+      const off = RagState(
+        enabled: false,
+        connected: true,
+        books: {
+          'b1': RagBookIndex(status: RagBookStatus.completed, backendBookId: 'backend_1'),
+        },
+      );
+      expect(off.canRagFor('b1'), isFalse);
+
+      const notConnected = RagState(
+        enabled: true,
+        connected: false,
+        books: {
+          'b1': RagBookIndex(status: RagBookStatus.completed, backendBookId: 'backend_1'),
+        },
+      );
+      expect(notConnected.canRagFor('b1'), isFalse);
+
+      const notIndexed = RagState(
+        enabled: true,
+        connected: true,
+        books: {
+          'b1': RagBookIndex(status: RagBookStatus.ingesting),
+        },
+      );
+      expect(notIndexed.canRagFor('b1'), isFalse);
+
+      const ready = RagState(
+        enabled: true,
+        connected: true,
+        books: {
+          'b1': RagBookIndex(status: RagBookStatus.completed, backendBookId: 'backend_1'),
+        },
+      );
+      expect(ready.canRagFor('b1'), isTrue);
+      expect(ready.backendBookIdFor('b1'), 'backend_1');
+    });
+
+    test('RagCitation.fromJson parses backend payloads', () {
+      final c = RagCitation.fromJson({
+        'title': 'Do Epic Shit',
+        'chapter': 'Ch. 3',
+        'page': 42,
+        'score': 0.87,
+      });
+      expect(c.title, 'Do Epic Shit');
+      expect(c.chapter, 'Ch. 3');
+      expect(c.page, 42);
+      expect(c.score, 0.87);
+    });
+  });
+
+  group('RagStore Tests', () {
+    test('config and book id map round-trip', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await RagStore.init();
+
+      expect(store.getConfig().enabled, isFalse);
+
+      await store.setConfig(const RagConfig(enabled: true, baseUrl: 'http://192.168.1.5:8000'));
+      final cfg = store.getConfig();
+      expect(cfg.enabled, isTrue);
+      expect(cfg.baseUrl, 'http://192.168.1.5:8000');
+
+      await store.setBackendBookId('bookA', 'backend_A');
+      await store.setBackendBookId('bookB', 'backend_B');
+      expect(store.backendBookIdFor('bookA'), 'backend_A');
+      expect(store.backendBookIdFor('bookB'), 'backend_B');
+      expect(store.backendBookIdFor('missing'), isNull);
+    });
+  });
+
   group('AppColors Tests', () {
     test('Strict AppColors constants have correct values', () {
       expect(AppColors.primary, const Color(0xFFC2703D));
