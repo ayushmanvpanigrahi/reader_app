@@ -20,7 +20,7 @@ class OpenAICompatibleEmbeddings:
         self._client = httpx.AsyncClient(timeout=60.0)
         self._lock = asyncio.Lock()
 
-    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed(self, texts: Sequence[str], *, kind: str = "passage") -> list[list[float]]:
         endpoints = provider_context.embed_endpoints()
         if not endpoints:
             raise NoEmbeddingProviderError("No embedding-capable provider configured.")
@@ -28,7 +28,7 @@ class OpenAICompatibleEmbeddings:
         last_error: str | None = None
         for ep in endpoints:
             try:
-                vectors = await self._embed_once(ep, texts)
+                vectors = await self._embed_once(ep, texts, kind=kind)
                 provider_context.emit_provider_used(ep.provider_name, ep.model, kind="embedding")
                 return vectors
             except httpx.HTTPStatusError as exc:
@@ -39,16 +39,31 @@ class OpenAICompatibleEmbeddings:
                 self._switch_away(ep, last_error)
         raise NoEmbeddingProviderError(f"All embedding providers failed. Last error: {last_error}")
 
-    async def _embed_once(self, ep: provider_context.Endpoint, texts: Sequence[str]) -> list[list[float]]:
+    async def _embed_once(
+        self,
+        ep: provider_context.Endpoint,
+        texts: Sequence[str],
+        *,
+        kind: str,
+    ) -> list[list[float]]:
         url = f"{ep.base_url.rstrip('/')}/embeddings"
         headers = {"Content-Type": "application/json"}
         if ep.api_key:
             headers["Authorization"] = f"Bearer {ep.api_key}"
 
+        # NVIDIA NIM embedding models (nemotron-3-embed-1b, nv-embed-*, ...)
+        # require `input_type` — "passage" while indexing documents, "query"
+        # while embedding a search query. Wrong/missing input_type degrades
+        # retrieval accuracy or errors out entirely.
+        is_nvidia = "nvidia.com" in ep.base_url
+
         vectors: list[list[float]] = []
         for batch_start in range(0, len(texts), 64):
             batch = texts[batch_start : batch_start + 64]
-            payload = {"model": ep.model, "input": list(batch)}
+            payload: dict[str, object] = {"model": ep.model, "input": list(batch)}
+            if is_nvidia:
+                payload["input_type"] = kind
+                payload["modality"] = "text"
             async with self._lock:
                 resp = await self._client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
@@ -75,5 +90,5 @@ def get_embeddings() -> OpenAICompatibleEmbeddings:
     return _embeddings
 
 
-async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
-    return await get_embeddings().embed(texts)
+async def embed_texts(texts: Sequence[str], *, kind: str = "passage") -> list[list[float]]:
+    return await get_embeddings().embed(texts, kind=kind)

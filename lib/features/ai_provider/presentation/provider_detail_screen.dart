@@ -388,6 +388,7 @@ class _ModelsSection extends ConsumerWidget {
             isDark: isDark,
             modelIds: modelIds,
             info: info,
+            initialModality: ModelModality.text,
             onPick: (id) => ref.read(activeProviderProvider.notifier).selectChatModel(id),
           ),
           const SizedBox(height: 10),
@@ -399,6 +400,7 @@ class _ModelsSection extends ConsumerWidget {
             isDark: isDark,
             modelIds: modelIds,
             info: info,
+            initialModality: ModelModality.embeddings,
             onPick: (id) => ref.read(activeProviderProvider.notifier).selectEmbeddingModel(id),
           ),
         ],
@@ -415,6 +417,7 @@ class _ModelSelectorRow extends ConsumerWidget {
   final bool isDark;
   final List<String> modelIds;
   final Map<String, AIModelInfo> info;
+  final ModelModality? initialModality;
   final ValueChanged<String> onPick;
 
   const _ModelSelectorRow({
@@ -425,6 +428,7 @@ class _ModelSelectorRow extends ConsumerWidget {
     required this.isDark,
     required this.modelIds,
     required this.info,
+    this.initialModality,
     required this.onPick,
   });
 
@@ -439,6 +443,7 @@ class _ModelSelectorRow extends ConsumerWidget {
                 selectedId: modelId,
                 title: 'Select $label',
                 info: info,
+                initialModality: initialModality,
               );
               if (picked != null) onPick(picked);
             }

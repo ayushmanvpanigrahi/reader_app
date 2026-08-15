@@ -155,7 +155,7 @@ class QdrantHybridStore:
         dense_vectors: list[list[float]] | None = None
         dense_model = ""
         try:
-            dense_vectors = await self._embeddings.embed(texts)
+            dense_vectors = await self._embeddings.embed(texts, kind="passage")
             dense_model = provider_context.embed_model_hint()
             dim = len(dense_vectors[0])
             collection_dim = await self._collection_dense_size(user_id)
@@ -226,7 +226,7 @@ class QdrantHybridStore:
         try:
             collection_dim = await self._collection_dense_size(user_id)
             if collection_dim is not None:
-                candidate = (await self._embeddings.embed([query]))[0]
+                candidate = (await self._embeddings.embed([query], kind="query"))[0]
                 if len(candidate) == collection_dim:
                     dense_vec = candidate
         except (NoEmbeddingProviderError, Exception):  # noqa: BLE001 - fall back to sparse search
@@ -287,7 +287,7 @@ class QdrantHybridStore:
             raise NoEmbeddingProviderError("No embedding-capable provider configured.")
         model = endpoints[0].model
 
-        probe = await self._embeddings.embed(["backfill probe"])
+        probe = await self._embeddings.embed(["backfill probe"], kind="passage")
         dim = len(probe[0])
         collection_dim = await self._collection_dense_size(user_id)
         if collection_dim is not None and collection_dim != dim:
@@ -327,7 +327,7 @@ class QdrantHybridStore:
         for start in range(0, len(pending), 64):
             batch = pending[start : start + 64]
             texts = [p["text"] for p in batch]
-            vectors = await self._embeddings.embed(texts)
+            vectors = await self._embeddings.embed(texts, kind="passage")
             await self._client.update_vectors(
                 collection_name=name,
                 points=[

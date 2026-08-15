@@ -7,6 +7,11 @@ import '../extensions.dart';
 
 /// Model selection sheet: modal bottom sheet with live filtering.
 /// Returns the selected model id, or null if dismissed.
+///
+/// The sheet lets the user scope the list by modality (Chat / Embeddings /
+/// Vision) using filter chips, and shows family + pricing badges per model.
+/// Pass [initialModality] to open on a specific scope (e.g. embeddings when
+/// picking the embedding model); the user can still switch to "All".
 class ModelPickerSheet {
   static Future<String?> show(
     BuildContext context, {
@@ -14,6 +19,7 @@ class ModelPickerSheet {
     required String? selectedId,
     String title = 'Select a model',
     Map<String, AIModelInfo>? info,
+    ModelModality? initialModality,
   }) {
     return showModalBottomSheet<String>(
       context: context,
@@ -24,6 +30,7 @@ class ModelPickerSheet {
         selectedId: selectedId,
         title: title,
         info: info,
+        initialModality: initialModality,
       ),
     );
   }
@@ -34,12 +41,14 @@ class _ModelPickerSheet extends HookWidget {
   final String? selectedId;
   final String title;
   final Map<String, AIModelInfo>? info;
+  final ModelModality? initialModality;
 
   const _ModelPickerSheet({
     required this.allModelIds,
     required this.selectedId,
     required this.title,
     this.info,
+    this.initialModality,
   });
 
   @override
@@ -47,13 +56,19 @@ class _ModelPickerSheet extends HookWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final search = useTextEditingController();
     final query = useValueListenable(search);
+    final modality = useState<ModelModality?>(initialModality);
+
     final filtered = useMemoized(
       () {
         final q = query.text.trim().toLowerCase();
-        if (q.isEmpty) return allModelIds;
-        return allModelIds.where((id) => id.toLowerCase().contains(q)).toList();
+        return allModelIds.where((id) {
+          if (q.isNotEmpty && !id.toLowerCase().contains(q)) return false;
+          final model = info?[id];
+          if (modality.value == null || model == null) return true;
+          return model.modality == modality.value;
+        }).toList();
       },
-      [query.text, allModelIds],
+      [query.text, modality.value, allModelIds, info],
     );
 
     return Container(
@@ -133,7 +148,13 @@ class _ModelPickerSheet extends HookWidget {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          _ModalityFilter(
+            selected: modality.value,
+            isDark: isDark,
+            onChanged: (m) => modality.value = m,
+          ),
+          const SizedBox(height: 6),
           Expanded(
             child: filtered.isEmpty
                 ? Center(
@@ -161,6 +182,96 @@ class _ModelPickerSheet extends HookWidget {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ModalityFilter extends StatelessWidget {
+  final ModelModality? selected;
+  final bool isDark;
+  final ValueChanged<ModelModality?> onChanged;
+
+  const _ModalityFilter({
+    required this.selected,
+    required this.isDark,
+    required this.onChanged,
+  });
+
+  static const _tabs = <ModelModality?>[
+    null,
+    ModelModality.text,
+    ModelModality.embeddings,
+    ModelModality.vision,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          for (final tab in _tabs) ...[
+            _FilterChip(
+              label: tab?.label ?? 'All',
+              selected: selected == tab,
+              color: primary,
+              isDark: isDark,
+              onTap: () => onChanged(tab),
+            ),
+            if (tab != _tabs.last) const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: isDark ? 0.28 : 0.14)
+              : (isDark ? AppColors.darkCard : AppColors.lightPaper),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? color.withValues(alpha: 0.6)
+                : (isDark ? AppColors.darkBorder : AppColors.border),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected
+                ? color
+                : (isDark ? AppColors.darkMuted : AppColors.lightMuted),
+          ),
+        ),
       ),
     );
   }
@@ -226,6 +337,32 @@ class _ModelTile extends StatelessWidget {
                         color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _Badge(
+                          label: info!.family.label,
+                          color: accent,
+                          isDark: isDark,
+                        ),
+                        _Badge(
+                          label: info!.modality.label,
+                          color: info!.isEmbedding
+                              ? const Color(0xFF42A5F5)
+                              : accent,
+                          isDark: isDark,
+                        ),
+                        _Badge(
+                          label: info!.isFree ? 'Free' : 'Paid',
+                          color: info!.isFree
+                              ? const Color(0xFF66BB6A)
+                              : const Color(0xFFE57373),
+                          isDark: isDark,
+                        ),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -239,12 +376,39 @@ class _ModelTile extends StatelessWidget {
   }
 
   String _subtitle(AIModelInfo m) {
-    final parts = <String>[
-      m.modality.label,
-      if (m.pricingTier == PricingTier.paid) 'Paid' else 'Free',
-    ];
     final ctx = formatContext(m.contextWindow);
-    if (ctx != '—') parts.insert(0, ctx);
-    return parts.join(' · ');
+    return ctx == '—' ? 'OpenAI-compatible endpoint' : '$ctx window';
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool isDark;
+
+  const _Badge({
+    required this.label,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.22 : 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
   }
 }

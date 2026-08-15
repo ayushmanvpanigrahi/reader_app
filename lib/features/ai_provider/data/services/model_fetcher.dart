@@ -74,7 +74,10 @@ class ModelFetcher {
     final idLower = id.toLowerCase();
 
     final isEmbedding = idLower.contains('embedding') ||
-        idLower.contains('text-embedding') ||
+        idLower.contains('-embed') ||
+        idLower.contains('embedqa') ||
+        idLower.contains('nv-embed') ||
+        idLower.contains('nemoretriever') ||
         idLower.contains('bge') ||
         idLower.contains('e5-');
 
@@ -110,6 +113,7 @@ class ModelFetcher {
 
   static ModelFamily _classifyFamily(String id, String ownedBy) {
     if (ownedBy.isNotEmpty) {
+      if (ownedBy.contains('nvidia')) return ModelFamily.nvidia;
       if (ownedBy.contains('meta')) return ModelFamily.meta;
       if (ownedBy.contains('mistral')) return ModelFamily.mistral;
       if (ownedBy.contains('qwen') || ownedBy.contains('alibaba')) return ModelFamily.qwen;
@@ -118,6 +122,7 @@ class ModelFetcher {
       if (ownedBy.contains('anthropic')) return ModelFamily.anthropic;
       if (ownedBy.contains('google')) return ModelFamily.google;
     }
+    if (id.startsWith('nvidia/') || id.contains('nemotron')) return ModelFamily.nvidia;
     if (id.contains('llama')) return ModelFamily.meta;
     if (id.contains('mistral') || id.contains('mixtral')) return ModelFamily.mistral;
     if (id.contains('qwen')) return ModelFamily.qwen;

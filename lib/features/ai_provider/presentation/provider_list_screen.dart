@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/status_banner.dart';
 import '../../../core/widgets/surface_card.dart';
+import '../data/models/ai_model_info.dart';
 import '../data/models/ai_provider.dart';
 import '../domain/notifiers/active_provider_notifier.dart';
 import '../domain/notifiers/model_switcher_notifier.dart';
@@ -351,6 +352,7 @@ class _FallbackPoolSheet extends ConsumerWidget {
                 title: 'Chat models',
                 pool: chatPool,
                 isDark: isDark,
+                initialModality: ModelModality.text,
                 onPick: (ids) =>
                     ref.read(modelSwitcherProvider.notifier).setChatFallbackPool(ids),
               ),
@@ -359,6 +361,7 @@ class _FallbackPoolSheet extends ConsumerWidget {
                 title: 'Embedding models',
                 pool: embedPool,
                 isDark: isDark,
+                initialModality: ModelModality.embeddings,
                 onPick: (ids) =>
                     ref.read(modelSwitcherProvider.notifier).setEmbeddingFallbackPool(ids),
               ),
@@ -374,12 +377,14 @@ class _PoolSection extends ConsumerWidget {
   final String title;
   final List<String> pool;
   final bool isDark;
+  final ModelModality? initialModality;
   final ValueChanged<List<String>> onPick;
 
   const _PoolSection({
     required this.title,
     required this.pool,
     required this.isDark,
+    this.initialModality,
     required this.onPick,
   });
 
@@ -390,6 +395,13 @@ class _PoolSection extends ConsumerWidget {
       for (final p in providers)
         for (final m in p.cachedModelIds) m,
     ];
+    final info = <String, AIModelInfo>{};
+    for (final p in providers) {
+      final cached = ref.watch(modelRepositoryProvider).cached(p.id) ?? const [];
+      for (final m in cached) {
+        info[m.id] = m;
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,6 +462,8 @@ class _PoolSection extends ConsumerWidget {
                   allModelIds: allModels,
                   selectedId: null,
                   title: 'Add to $title',
+                  info: info,
+                  initialModality: initialModality,
                 );
                 if (picked != null && !pool.contains(picked)) {
                   onPick([...pool, picked]);

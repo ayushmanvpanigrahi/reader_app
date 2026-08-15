@@ -4,7 +4,7 @@ part 'ai_model_info.g.dart';
 
 enum ModelModality { text, embeddings, vision, image }
 
-enum ModelFamily { meta, mistral, qwen, deepseek, openai, anthropic, google, custom }
+enum ModelFamily { meta, mistral, qwen, deepseek, openai, anthropic, google, nvidia, custom }
 
 enum PricingTier { free, paid }
 

@@ -67,6 +67,7 @@ extension ModelFamilyX on ModelFamily {
         ModelFamily.openai => 'OpenAI',
         ModelFamily.anthropic => 'Anthropic',
         ModelFamily.google => 'Google',
+        ModelFamily.nvidia => 'NVIDIA',
         ModelFamily.custom => 'Other',
       };
 }
