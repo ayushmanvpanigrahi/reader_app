@@ -355,16 +355,45 @@ class HighlightsController extends StateNotifier<HighlightsState> {
 
   // ─── Prompt & Parser ──────────────────────────────────────────────
 
+  /// Detects if text appears to be raw 8-bit glyph codes or legacy font encoding
+  /// (e.g. KrutiDev, Chanakya, Walkman, or custom Devanagari fonts).
+  @visibleForTesting
+  static bool isLikelyGarbled(String text) {
+    if (text.trim().isEmpty) return false;
+    final specialChars = text.split('').where((c) =>
+      '<>*&@#^~`§±÷æøåôöüäéèê()[]{}|\\'.contains(c) || c.codeUnitAt(0) > 127).length;
+    return (specialChars / text.length) > 0.10;
+  }
+
   String _buildPrompt(String selectedText) {
-    return 'You are a reading companion that explains a highlighted passage from a book. '
-        'Explain the following selected passage in a simple, easy-to-understand way for a learner.\n\n'
-        'Selected passage:\n"""\n$selectedText\n"""\n\n'
-        'Return your answer using EXACTLY these five labeled sections, one section per line:\n'
-        'SIMPLE_MEANING: <one-sentence plain-English meaning>\n'
-        'AUTHOR_CONTEXT: <why the author likely wrote this and the tone or intent>\n'
-        'REFLECTION_QUESTION: <one open-ended question to help the reader connect it to their own life>\n'
-        'ANALOGY: <a vivid everyday analogy that makes the idea click>\n'
-        'TAKEAWAY: <one memorable takeaway sentence>';
+    final garbled = isLikelyGarbled(selectedText);
+    final buffer = StringBuffer();
+    buffer.writeln('You are an expert reading companion that explains a highlighted passage from a book.');
+
+    if (garbled) {
+      buffer.writeln(
+        '\n[NOTE ON TEXT ENCODING]:\n'
+        'The selected text below was extracted from a PDF that uses legacy 8-bit font encoding '
+        '(such as Sanskrit / Hindi / Devanagari KrutiDev, Chanakya, Walkman, or DV-Surekh font). '
+        'The characters appear as garbled ASCII (e.g. "TaÀ Sa&SMa*TYa" for "tach cha saṁsmṛtya"). '
+        'Using your knowledge of Indian scriptures and literature (like Bhagavad Gita, Upanishads, etc.), '
+        'verse markers, numbers (e.g. 77 -> Gita 18.77), and phonetic patterns, identify what this '
+        'passage/verse actually is, restore its authentic text, and provide the 5-part explanation '
+        'based on the deciphered passage.\n',
+      );
+    }
+
+    buffer.writeln(
+      'Explain the following selected passage in a simple, easy-to-understand way for a learner.\n\n'
+      'Selected passage:\n"""\n$selectedText\n"""\n\n'
+      'Return your answer using EXACTLY these five labeled sections, one section per line:\n'
+      'SIMPLE_MEANING: <one-sentence plain-English meaning>\n'
+      'AUTHOR_CONTEXT: <why the author likely wrote this and the tone or intent>\n'
+      'REFLECTION_QUESTION: <one open-ended question to help the reader connect it to their own life>\n'
+      'ANALOGY: <a vivid everyday analogy that makes the idea click>\n'
+      'TAKEAWAY: <one memorable takeaway sentence>',
+    );
+    return buffer.toString();
   }
 
   /// Builds a system context message that seeds the follow-up conversation

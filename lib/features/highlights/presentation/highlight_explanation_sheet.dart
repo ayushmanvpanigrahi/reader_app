@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +8,15 @@ import '../../../core/theme/neumorphic_decorations.dart';
 import '../controllers/highlights_controller.dart';
 import '../data/highlight_model.dart';
 import '../data/text_normalizer.dart';
+
+enum ExplainStatus {
+  idle,
+  sending, // "Sending to AI..."
+  thinking, // "AI is reading your passage..."
+  generating, // "Generating explanation..."
+  done,
+  error,
+}
 
 Future<void> showHighlightExplanationSheet(
   BuildContext context, {
@@ -50,6 +61,9 @@ class _HighlightExplanationSheetState
     extends ConsumerState<HighlightExplanationSheet> {
   HighlightExplanation? _explanation;
   bool _failed = false;
+  ExplainStatus _status = ExplainStatus.idle;
+  Timer? _statusTimer1;
+  Timer? _statusTimer2;
 
   // Editable passage
   bool _isEditing = false;
@@ -77,10 +91,36 @@ class _HighlightExplanationSheetState
 
   @override
   void dispose() {
+    _stopStatusTimers();
     _editController.dispose();
     _chatInputController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _startStatusTimers() {
+    _statusTimer1?.cancel();
+    _statusTimer2?.cancel();
+    setState(() => _status = ExplainStatus.sending);
+
+    _statusTimer1 = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted && _status == ExplainStatus.sending) {
+        setState(() => _status = ExplainStatus.thinking);
+      }
+    });
+
+    _statusTimer2 = Timer(const Duration(milliseconds: 2600), () {
+      if (mounted &&
+          (_status == ExplainStatus.sending ||
+              _status == ExplainStatus.thinking)) {
+        setState(() => _status = ExplainStatus.generating);
+      }
+    });
+  }
+
+  void _stopStatusTimers() {
+    _statusTimer1?.cancel();
+    _statusTimer2?.cancel();
   }
 
   void _scrollToBottom() {
@@ -96,6 +136,7 @@ class _HighlightExplanationSheetState
   }
 
   Future<void> _explain() async {
+    _startStatusTimers();
     final result = await ref
         .read(highlightsControllerProvider.notifier)
         .explain(
@@ -104,14 +145,19 @@ class _HighlightExplanationSheetState
           pageNumber: widget.pageNumber,
           selectedText: _currentText,
         );
+    _stopStatusTimers();
     if (!mounted) return;
     if (result == null) {
-      final error = ref.read(highlightsControllerProvider).error;
-      if (error != null) {
-        setState(() => _failed = true);
-      }
+      setState(() {
+        _status = ExplainStatus.error;
+        _failed = true;
+      });
     } else {
-      setState(() => _explanation = result);
+      setState(() {
+        _status = ExplainStatus.done;
+        _explanation = result;
+        _failed = false;
+      });
     }
   }
 
@@ -122,6 +168,7 @@ class _HighlightExplanationSheetState
       _explanation = null;
       _failed = false;
     });
+    _startStatusTimers();
     await ref
         .read(highlightsControllerProvider.notifier)
         .reExplain(
@@ -130,12 +177,20 @@ class _HighlightExplanationSheetState
           pageNumber: widget.pageNumber,
           selectedText: _currentText,
         );
+    _stopStatusTimers();
     if (!mounted) return;
     final explanation = ref.read(highlightsControllerProvider).lastExplanation;
     if (explanation != null) {
-      setState(() => _explanation = explanation);
+      setState(() {
+        _status = ExplainStatus.done;
+        _explanation = explanation;
+        _failed = false;
+      });
     } else {
-      setState(() => _failed = true);
+      setState(() {
+        _status = ExplainStatus.error;
+        _failed = true;
+      });
     }
   }
 
@@ -215,7 +270,7 @@ class _HighlightExplanationSheetState
             // Scrollable content area
             Expanded(
               child: isExplaining && _explanation == null
-                  ? const _LoadingState()
+                  ? _LoadingState(status: _status)
                   : _failed
                       ? _ErrorState(
                           onRetry: () {
@@ -224,7 +279,7 @@ class _HighlightExplanationSheetState
                           },
                         )
                       : _explanation == null
-                          ? const _LoadingState()
+                          ? _LoadingState(status: _status)
                           : CustomScrollView(
                               controller: _scrollController,
                               physics: const BouncingScrollPhysics(),
@@ -907,22 +962,74 @@ class _ChatInputBar extends StatelessWidget {
 // ─── Loading State ──────────────────────────────────────────────────
 
 class _LoadingState extends StatelessWidget {
-  const _LoadingState();
+  final ExplainStatus status;
+
+  const _LoadingState({required this.status});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+
+    String label;
+    IconData icon;
+
+    switch (status) {
+      case ExplainStatus.sending:
+        label = 'Sending to AI...';
+        icon = Icons.cloud_upload_outlined;
+        break;
+      case ExplainStatus.thinking:
+        label = 'AI is reading your passage...';
+        icon = Icons.psychology_outlined;
+        break;
+      case ExplainStatus.generating:
+        label = 'Generating explanation...';
+        icon = Icons.auto_awesome;
+        break;
+      case ExplainStatus.idle:
+      case ExplainStatus.done:
+      case ExplainStatus.error:
+        label = 'Analyzing highlight...';
+        icon = Icons.auto_awesome;
+        break;
+    }
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(),
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(icon, size: 28, color: primary),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              valueColor: AlwaysStoppedAnimation<Color>(primary),
+            ),
+          ),
           const SizedBox(height: 16),
-          Text(
-            'Reading with AI...',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Text(
+              label,
+              key: ValueKey(label),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkInk : AppColors.lightInk,
+              ),
             ),
           ),
         ],

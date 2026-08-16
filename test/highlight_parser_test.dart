@@ -136,4 +136,25 @@ void main() {
       expect(result.takeaway, 'Small daily actions compound into mastery.');
     });
   });
+
+  group('HighlightsController.isLikelyGarbled', () {
+    test('detects legacy font Sanskrit ASCII garbage', () {
+      const garbled = 'TaÀ Sa&SMa*TYa Sa&SMa*TYa æPaMaTYad(>auTa& hre") ivSMaYaae Mae MahaNraJaNôZYaaIMa c PauNa" PauNa" )) 77 ))';
+      expect(HighlightsController.isLikelyGarbled(garbled), isTrue);
+    });
+
+    test('detects Devanagari KrutiDev legacy glyphs', () {
+      const garbled = 'EGau<YaivzYaa veda iNañEGau<Yaae >avaJauRna ) iNaÜRNÜae...';
+      expect(HighlightsController.isLikelyGarbled(garbled), isTrue);
+    });
+
+    test('returns false for clean standard English prose', () {
+      const clean = 'The truth is often avoided because it is ugly and unpleasant. Never appeal to truth and reality unless you are prepared.';
+      expect(HighlightsController.isLikelyGarbled(clean), isFalse);
+    });
+
+    test('returns false for empty text', () {
+      expect(HighlightsController.isLikelyGarbled(''), isFalse);
+    });
+  });
 }
