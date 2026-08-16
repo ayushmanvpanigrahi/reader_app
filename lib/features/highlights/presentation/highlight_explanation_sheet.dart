@@ -195,6 +195,7 @@ class _HighlightExplanationSheetState
   }
 
   Future<void> _sendFollowUp(String question) async {
+    FocusScope.of(context).unfocus();
     _chatInputController.clear();
     _scrollToBottom();
     await ref
@@ -273,6 +274,7 @@ class _HighlightExplanationSheetState
                   ? _LoadingState(status: _status)
                   : _failed
                       ? _ErrorState(
+                          message: highlightsState.error,
                           onRetry: () {
                             setState(() => _failed = false);
                             _explain();
@@ -1041,9 +1043,10 @@ class _LoadingState extends StatelessWidget {
 // ─── Error State ────────────────────────────────────────────────────
 
 class _ErrorState extends StatelessWidget {
+  final String? message;
   final VoidCallback onRetry;
 
-  const _ErrorState({required this.onRetry});
+  const _ErrorState({this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1059,7 +1062,9 @@ class _ErrorState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Could not explain this highlight.\nMake sure an AI provider is configured.',
+            message?.isNotEmpty == true
+                ? message!
+                : 'Could not explain this highlight.\nMake sure an AI provider is configured.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

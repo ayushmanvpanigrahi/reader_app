@@ -284,7 +284,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
 
       final aiMessage = ChatMessage(role: 'assistant', content: raw.trim());
       state = state.copyWith(
-        conversationHistory: [...state.conversationHistory, aiMessage],
+        conversationHistory: [...updatedHistory, aiMessage],
         isFollowingUp: false,
       );
     } on DioException catch (e) {
@@ -360,9 +360,25 @@ class HighlightsController extends StateNotifier<HighlightsState> {
   @visibleForTesting
   static bool isLikelyGarbled(String text) {
     if (text.trim().isEmpty) return false;
-    final specialChars = text.split('').where((c) =>
-      '<>*&@#^~`§±÷æøåôöüäéèê()[]{}|\\'.contains(c) || c.codeUnitAt(0) > 127).length;
-    return (specialChars / text.length) > 0.10;
+    var specialCount = 0;
+    final len = text.length;
+    for (var i = 0; i < len; i++) {
+      final c = text.codeUnitAt(i);
+      if (c > 127 ||
+          c == 0x3C || c == 0x3E || // < >
+          c == 0x2A || c == 0x26 || // * &
+          c == 0x40 || c == 0x23 || // @ #
+          c == 0x5E || c == 0x7E || // ^ ~
+          c == 0x28 || c == 0x29 || // ( )
+          c == 0x5B || c == 0x5D || // [ ]
+          c == 0x7B || c == 0x7D || // { }
+          c == 0x7C || c == 0x5C || // | \
+          c == 0x60 ||              // `
+          c == 0x22) {             // "
+        specialCount++;
+      }
+    }
+    return (specialCount / len) > 0.10;
   }
 
   String _buildPrompt(String selectedText) {
