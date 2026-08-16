@@ -134,10 +134,70 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
         },
         onThemePresetChanged: (preset) {
           notifier.setThemePreset(preset);
+          _applyThemeToViewer(
+            ref.read(epubReaderControllerProvider(widget.book.id)),
+          );
           Navigator.pop(ctx);
         },
       ),
     );
+  }
+
+  /// Pushes the current tone preset into the embedded webview via CSS
+  /// injection. EPUB content is rendered by the webview, so a Flutter
+  /// `ColorFilter` cannot touch it — themes must be applied as CSS rules.
+  /// Safe to call before the webview is ready (it becomes a no-op).
+  void _applyThemeToViewer(EpubReaderState state) {
+    try {
+      _epubController.updateTheme(theme: _epubThemeFor(state.themePreset));
+    } catch (_) {
+      // Viewer not ready yet; the theme is re-applied on location load.
+    }
+  }
+
+  EpubTheme _epubThemeFor(String preset) {
+    switch (preset) {
+      case 'sepia':
+        return EpubTheme.custom(
+          foregroundColor: const Color(0xFF533F2D),
+          customCss: <String, dynamic>{
+            'body': {'background': '#F4ECD8', 'color': '#533F2D'},
+            'img': {'filter': 'sepia(0.35) saturate(0.9) brightness(0.98)'},
+            'a': {'color': '#6B4F2E'},
+          },
+        );
+      case 'dark':
+        // Night Charcoal: soft charcoal page. Images are dimmed and gently
+        // desaturated but never inverted, so diagrams keep their colors and
+        // nothing flips into blue/green negatives.
+        return EpubTheme.custom(
+          foregroundColor: const Color(0xFFE2E2E2),
+          customCss: <String, dynamic>{
+            'body': {'background': '#1A1A1A', 'color': '#E2E2E2'},
+            'img': {'filter': 'brightness(0.72) saturate(0.55) contrast(1.05)'},
+            'a': {'color': '#9CC3E5'},
+          },
+        );
+      case 'oled':
+        // E-Ink OLED: pure black page with crisp white text and natural
+        // monochrome (luminance-inverted) illustrations.
+        return EpubTheme.custom(
+          foregroundColor: const Color(0xFFFFFFFF),
+          customCss: <String, dynamic>{
+            'body': {'background': '#000000', 'color': '#FFFFFF'},
+            'img': {'filter': 'grayscale(1) invert(1)'},
+            'a': {'color': '#E8E8E8'},
+          },
+        );
+      default:
+        // Original: crisp paper page.
+        return EpubTheme.custom(
+          foregroundColor: const Color(0xFF181310),
+          customCss: <String, dynamic>{
+            'body': {'background': '#FDFAF4', 'color': '#181310'},
+          },
+        );
+    }
   }
 
   @override
@@ -162,15 +222,15 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
 
     final Color bgColor = switch (state.themePreset) {
       'sepia' => const Color(0xFFF4ECD8),
-      'dark' => const Color(0xFF2B2723),
-      'oled' => const Color(0xFF0D0B0A),
+      'dark' => const Color(0xFF1A1A1A),
+      'oled' => const Color(0xFF000000),
       _ => isDark ? AppColors.darkPaper : const Color(0xFFFDFAF4),
     };
 
     final Color textColor = switch (state.themePreset) {
       'sepia' => const Color(0xFF533F2D),
-      'dark' => const Color(0xFFF3EDDF),
-      'oled' => const Color(0xFFD4CEC3),
+      'dark' => const Color(0xFFE2E2E2),
+      'oled' => const Color(0xFFFFFFFF),
       _ => isDark ? AppColors.darkInk : const Color(0xFF181310),
     };
 
@@ -189,6 +249,11 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                       epubSource: EpubSource.fromData(
                           io.File(widget.book.filePath).readAsBytesSync()),
                       onLocationLoaded: () {
+                        // Apply the current tone preset to the rendered content
+                        // (a no-op if the webview is not ready yet).
+                        _applyThemeToViewer(
+                          ref.read(epubReaderControllerProvider(widget.book.id)),
+                        );
                         // Resume at the saved position as soon as the book's
                         // locations are generated, before any page sync fires.
                         if (!_isRestoringPosition) return;

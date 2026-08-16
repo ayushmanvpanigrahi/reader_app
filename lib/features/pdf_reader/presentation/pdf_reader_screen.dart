@@ -14,6 +14,7 @@ import 'package:reader_app/features/rag/controllers/rag_controller.dart';
 import 'package:reader_app/features/rag/data/rag_models.dart';
 import '../controllers/pdf_reader_controller.dart';
 import 'widgets/pdf_controls_overlay.dart';
+import 'widgets/reading_tone_matrices.dart';
 
 class PdfReaderScreen extends ConsumerStatefulWidget {
   final BookModel book;
@@ -177,25 +178,12 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
       viewerWidget = _buildSamplePdfView(isDark, state, controller);
     }
 
-    // Apply color filter mode (Standard / Sepia / Dark Invert)
-    if (state.readingMode == PdfReadingMode.sepia) {
+    // Apply the reading tone (Original / Warm Sepia / Night Charcoal /
+    // E-Ink OLED). Dark modes use calibrated luminance-inverted matrices so
+    // images never flip into blue/green negatives.
+    if (state.readingMode != PdfReadingMode.standard) {
       viewerWidget = ColorFiltered(
-        colorFilter: const ColorFilter.matrix(<double>[
-          0.90, 0.05, 0.05, 0, 0, // Red
-          0.05, 0.85, 0.05, 0, 0, // Green
-          0.05, 0.05, 0.65, 0, 0, // Blue
-          0, 0, 0, 1, 0,          // Alpha
-        ]),
-        child: viewerWidget,
-      );
-    } else if (state.readingMode == PdfReadingMode.darkInverted) {
-      viewerWidget = ColorFiltered(
-        colorFilter: const ColorFilter.matrix(<double>[
-          -1, 0, 0, 0, 255, // Red Invert
-          0, -1, 0, 0, 255, // Green Invert
-          0, 0, -1, 0, 255, // Blue Invert
-          0, 0, 0, 1, 0,    // Alpha
-        ]),
+        colorFilter: colorFilterFor(state.readingMode),
         child: viewerWidget,
       );
     }

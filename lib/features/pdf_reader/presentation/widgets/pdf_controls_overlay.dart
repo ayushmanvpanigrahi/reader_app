@@ -94,12 +94,12 @@ class PdfControlsOverlay extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Reading Mode (Standard / Sepia / Dark)
+                        // Reading Tone (Original / Warm Sepia / Night Charcoal / E-Ink OLED)
                         NeumorphicButton.icon(
                           icon: Icons.tune_rounded,
                           size: 38,
                           iconSize: 18,
-                          tooltip: 'Color Filter Mode',
+                          tooltip: 'Reading Tone',
                           onPressed: () => _showModeSheet(context),
                         ),
                         const SizedBox(width: 6),
@@ -182,7 +182,7 @@ class PdfControlsOverlay extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Reading Color Filter',
+              'Reading Tone',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -207,13 +207,25 @@ class PdfControlsOverlay extends StatelessWidget {
                   bgColor: const Color(0xFFF4ECD8),
                   textColor: const Color(0xFF5B4636),
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildModeOption(
+                  ctx,
+                  label: 'Night Charcoal',
+                  mode: PdfReadingMode.charcoal,
+                  bgColor: const Color(0xFF1A1A1A),
+                  textColor: const Color(0xFFE2E2E2),
+                ),
                 const SizedBox(width: 12),
                 _buildModeOption(
                   ctx,
-                  label: 'Night Invert',
-                  mode: PdfReadingMode.darkInverted,
-                  bgColor: const Color(0xFF1E1A17),
-                  textColor: const Color(0xFFEDE5D8),
+                  label: 'E-Ink OLED',
+                  mode: PdfReadingMode.oledDark,
+                  bgColor: const Color(0xFF000000),
+                  textColor: const Color(0xFFFFFFFF),
                 ),
               ],
             ),

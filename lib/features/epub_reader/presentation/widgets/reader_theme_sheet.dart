@@ -106,9 +106,9 @@ class ReaderThemeSheet extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Background Presets
+          // Reading Tone Presets
           Text(
-            'Background Tone',
+            'Reading Tone',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -122,7 +122,7 @@ class ReaderThemeSheet extends StatelessWidget {
               _buildPresetCard(
                 context,
                 presetId: 'paper',
-                label: 'Paper',
+                label: 'Original',
                 bgColor: const Color(0xFFFDFAF4),
                 textColor: const Color(0xFF181310),
               ),
@@ -130,7 +130,7 @@ class ReaderThemeSheet extends StatelessWidget {
               _buildPresetCard(
                 context,
                 presetId: 'sepia',
-                label: 'Sepia',
+                label: 'Warm Sepia',
                 bgColor: const Color(0xFFF4ECD8),
                 textColor: const Color(0xFF533F2D),
               ),
@@ -138,17 +138,17 @@ class ReaderThemeSheet extends StatelessWidget {
               _buildPresetCard(
                 context,
                 presetId: 'dark',
-                label: 'Charcoal',
-                bgColor: const Color(0xFF2B2723),
-                textColor: const Color(0xFFF3EDDF),
+                label: 'Night Charcoal',
+                bgColor: const Color(0xFF1A1A1A),
+                textColor: const Color(0xFFE2E2E2),
               ),
               const SizedBox(width: 10),
               _buildPresetCard(
                 context,
                 presetId: 'oled',
-                label: 'OLED',
-                bgColor: const Color(0xFF0D0B0A),
-                textColor: const Color(0xFFD4CEC3),
+                label: 'E-Ink OLED',
+                bgColor: const Color(0xFF000000),
+                textColor: const Color(0xFFFFFFFF),
               ),
             ],
           ),
