@@ -27,12 +27,13 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
   late final EpubController _epubController;
   Timer? _progressDebounce;
   double? _pendingProgress;
-  bool _resumeJumpIssued = false;
+  bool _isRestoringPosition = false;
 
   @override
   void initState() {
     super.initState();
     _epubController = EpubController();
+    _isRestoringPosition = widget.book.progress > 0.01;
     _maybeIngestForRag();
   }
 
@@ -179,10 +180,13 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                       onLocationLoaded: () {
                         // Resume at the saved position as soon as the book's
                         // locations are generated, before any page sync fires.
-                        if (!_resumeJumpIssued && widget.book.progress > 0.01) {
-                          _resumeJumpIssued = true;
+                        if (!_isRestoringPosition) return;
+                        try {
                           _epubController
                               .toProgressPercentage(widget.book.progress.clamp(0.0, 1.0));
+                        } catch (_) {
+                          // Resume failed; fall back to normal syncing.
+                          _isRestoringPosition = false;
                         }
                       },
                       onChaptersLoaded: (chapters) {
@@ -198,13 +202,12 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                       },
                       onRelocated: (location) {
                         final progress = location.progress;
-                        if (_resumeJumpIssued) {
-                          // Ignore the initial ~0 progress report and wait until
-                          // we land at (or near) the restored position.
+                        if (_isRestoringPosition) {
+                          // Ignore the initial ~0 progress reports until we land
+                          // at (or near) the restored position; afterwards normal
+                          // syncing resumes for every further page turn.
                           if (progress < widget.book.progress * 0.5) return;
-                          _resumeJumpIssued = false;
-                        } else if (widget.book.progress > 0.01) {
-                          return;
+                          _isRestoringPosition = false;
                         }
                         _syncProgress(progress);
                       },
