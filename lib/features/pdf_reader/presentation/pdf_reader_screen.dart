@@ -179,8 +179,8 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     }
 
     // Apply the reading tone (Original / Warm Sepia / Night Charcoal /
-    // E-Ink OLED). Dark modes use calibrated luminance-inverted matrices so
-    // images never flip into blue/green negatives.
+    // E-Ink OLED). E-Ink OLED dims content without inverting; the pure-black
+    // scaffold provides the dark surround so images keep natural colors.
     if (state.readingMode != PdfReadingMode.standard) {
       viewerWidget = ColorFiltered(
         colorFilter: colorFilterFor(state.readingMode),
@@ -189,7 +189,9 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     }
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkStage : AppColors.lightStage,
+      backgroundColor: state.readingMode == PdfReadingMode.oledDark
+          ? Colors.black
+          : (isDark ? AppColors.darkStage : AppColors.lightStage),
       body: Stack(
         children: [
           // Raw pointer tap detection (bypasses the gesture arena the PDF

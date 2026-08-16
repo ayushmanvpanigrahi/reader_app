@@ -32,14 +32,20 @@ const List<double> kCharcoalToneMatrix = <double>[
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 
-/// E-Ink OLED: pure `#000000` background with `#FFFFFF` text.
+/// E-Ink OLED: brightness-dim with contrast boost — no luminance inversion.
 ///
-/// Full luminance inversion (out = 255 - L) so photos render as natural
-/// black-and-white print engravings with zero color artifacts.
+/// Reduces brightness by ~30 % and drops a flat −30 offset so white pages
+/// land on a comfortable dim gray while black text stays black.  Critically,
+/// every channel is scaled equally (`0.7` × original − 30), which means
+/// coloured images simply get darker instead of flipping into negatives or
+/// losing saturation — zero blue/green artifacts.
+///
+/// The pure-black scaffold behind the viewer provides the OLED-friendly dark
+/// surround; the viewer itself stays non-inverted for natural images.
 const List<double> kOledDarkToneMatrix = <double>[
-  -0.299, -0.587, -0.114, 0, 255,
-  -0.299, -0.587, -0.114, 0, 255,
-  -0.299, -0.587, -0.114, 0, 255,
+  0.7, 0.0, 0.0, 0, -30,
+  0.0, 0.7, 0.0, 0, -30,
+  0.0, 0.0, 0.7, 0, -30,
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 
