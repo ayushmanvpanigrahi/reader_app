@@ -116,7 +116,7 @@ class _ModelPickerSheet extends HookWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkInput : AppColors.secondary,
+                color: isDark ? AppColors.darkCard : AppColors.secondary,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: isDark ? AppColors.darkBorder : AppColors.border,

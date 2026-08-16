@@ -439,7 +439,7 @@ class _EmbeddingPoolEntry extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: (isDark ? AppColors.darkInput : AppColors.secondary).withValues(alpha: 0.7),
+          color: (isDark ? AppColors.darkCard : AppColors.secondary),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: (isDark ? AppColors.darkPrimary : AppColors.lightPrimary)
@@ -533,7 +533,7 @@ class _ModelSelectorRow extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: (isDark ? AppColors.darkInput : AppColors.secondary).withValues(alpha: 0.7),
+          color: (isDark ? AppColors.darkCard : AppColors.secondary),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(

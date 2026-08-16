@@ -22,16 +22,6 @@ import 'features/settings/controllers/settings_controller.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set immersive edge-to-edge system UI overlay style
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
-
   // Initialize local persistent storage
   final storageService = await LocalStorageService.init();
   await Hive.initFlutter();
@@ -68,15 +58,33 @@ class ReaderApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsState = ref.watch(settingsControllerProvider);
+    final platformBrightness =
+        View.of(context).platformDispatcher.platformBrightness;
+    final isDark = switch (settingsState.themeMode) {
+      ThemeMode.light => false,
+      ThemeMode.dark => true,
+      ThemeMode.system => platformBrightness == Brightness.dark,
+    };
+    final iconBrightness = isDark ? Brightness.light : Brightness.dark;
 
-    return MaterialApp(
-      title: 'Neomorphic Reader',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: settingsState.themeMode,
-      initialRoute: AppRouter.home,
-      onGenerateRoute: AppRouter.onGenerateRoute,
+    // Match status/navigation bar icon color to the effective theme so the
+    // clock and icons stay visible in both light and dark mode.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: iconBrightness,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: iconBrightness,
+      ),
+      child: MaterialApp(
+        title: 'Neomorphic Reader',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: settingsState.themeMode,
+        initialRoute: AppRouter.home,
+        onGenerateRoute: AppRouter.onGenerateRoute,
+      ),
     );
   }
 }

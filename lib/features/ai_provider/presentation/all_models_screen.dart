@@ -252,34 +252,49 @@ class _PillChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
     final muted = isDark ? AppColors.darkMuted : AppColors.lightMuted;
-    final foreground = chip.selected ? accent : muted;
+
+    final Color bg;
+    final Color fg;
+    final Color border;
+    final Color countColor;
+    if (chip.selected) {
+      bg = isDark ? AppColors.darkPrimaryTint : accent.withValues(alpha: 0.16);
+      fg = isDark ? AppColors.darkPrimaryLight : accent;
+      border = accent;
+      countColor = fg;
+    } else if (isDark) {
+      bg = AppColors.darkFrost;
+      fg = AppColors.darkFrostText;
+      border = AppColors.darkFrost.withValues(alpha: 0.55);
+      countColor = fg;
+    } else {
+      bg = AppColors.secondary.withValues(alpha: 0.7);
+      fg = muted;
+      border = AppColors.border;
+      countColor = fg;
+    }
+
     return InkWell(
       onTap: chip.onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: chip.selected
-              ? accent.withValues(alpha: 0.16)
-              : (isDark ? AppColors.darkInput : AppColors.secondary).withValues(alpha: 0.7),
+          color: bg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: chip.selected
-                ? accent.withValues(alpha: 0.6)
-                : (isDark ? AppColors.darkBorder : AppColors.border),
-          ),
+          border: Border.all(color: border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(chip.icon, size: 14, color: foreground),
+            Icon(chip.icon, size: 14, color: fg),
             const SizedBox(width: 5),
             Text(
               chip.label,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: chip.selected ? FontWeight.w700 : FontWeight.w600,
-                color: foreground,
+                color: fg,
               ),
             ),
             const SizedBox(width: 5),
@@ -288,7 +303,7 @@ class _PillChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: chip.selected ? accent : muted,
+                color: countColor,
               ),
             ),
           ],
@@ -398,12 +413,11 @@ class _ModelRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: (isDark ? AppColors.darkInput : AppColors.secondary)
-                  .withValues(alpha: 0.5),
+              color: isDark ? AppColors.darkCard : AppColors.secondary,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isActive
-                    ? accent.withValues(alpha: 0.6)
+                    ? accent.withValues(alpha: 0.7)
                     : (isDark ? AppColors.darkBorder : AppColors.border),
               ),
             ),
