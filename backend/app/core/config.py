@@ -11,19 +11,16 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]
 
-    # Auth
+# Auth
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRES_MINUTES: int = 60 * 24
 
-    # LLM (OpenAI-compatible)
-    LLM_PROVIDER: str = "openai"
-    OPENAI_API_KEY: str = ""
-    OPENAI_BASE_URL: str | None = None
-    CHAT_MODEL: str = "gpt-4o-mini"
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
-    EMBEDDING_DIM: int = 1536
+    # Default temperature for LLM calls (can be overridden per-call)
     TEMPERATURE: float = 0.3
+
+    # Default embedding dimension (fallback when embedding fails before first successful embed)
+    EMBEDDING_DIM: int = 1536
 
     # Reranker: "cohere" | "bge" | "none"
     RERANKER_PROVIDER: str = "none"
@@ -60,12 +57,6 @@ class Settings(BaseSettings):
     RELEVANCE_GRADE_TOP_K: int = 4
     # Max concurrent relevance-grade LLM calls per request.
     GRADER_CONCURRENCY: int = 4
-
-    # Fast model used ONLY for internal (non-visible) LLM calls: relevance
-    # grading, query rewriting, hallucination checking, memory anchors. The
-    # visible answer always streams from the user's selected chat model.
-    # Empty = internal calls use the normal chat endpoint(s).
-    FAST_CHAT_MODEL: str = ""
 
     # Conversation memory
     # Max number of prior turns injected into the answer prompt. Uses Redis

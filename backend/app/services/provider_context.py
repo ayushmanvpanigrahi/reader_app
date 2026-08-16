@@ -80,24 +80,12 @@ def chat_endpoints() -> list[Endpoint]:
         candidates = registry.chat_candidates(uid, _chat_pref_var.get())
         if candidates:
             return [_to_endpoint(c, embedding=False) for c in candidates]
-        # Every configured provider is failed/cooling down — tell the user why
-        # instead of silently falling back to the OpenAI default.
         reasons = registry.failure_reasons(uid)
         if reasons:
             raise ProviderUnavailableError(
                 "No working chat provider: " + " ".join(reasons)
             )
 
-    # No providers configured for this user; only fall back to OpenAI if a key
-    # actually exists (a keyless call would produce a confusing 401).
-    if settings.OPENAI_API_KEY:
-        return [
-            Endpoint(
-                base_url=(settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/"),
-                api_key=settings.OPENAI_API_KEY,
-                model=settings.CHAT_MODEL,
-            )
-        ]
     raise ProviderUnavailableError(
         "No AI provider configured. Add one in the app (Settings > AI Provider), then retry."
     )
@@ -152,14 +140,6 @@ def embed_endpoints() -> list[Endpoint]:
         if candidates:
             return [_to_endpoint(c, embedding=True) for c in candidates]
 
-    if settings.EMBEDDING_MODEL and settings.OPENAI_API_KEY:
-        return [
-            Endpoint(
-                base_url=(settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/"),
-                api_key=settings.OPENAI_API_KEY,
-                model=settings.EMBEDDING_MODEL,
-            )
-        ]
     return []
 
 
