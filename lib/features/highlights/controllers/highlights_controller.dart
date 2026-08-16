@@ -127,7 +127,11 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     HighlightExplanation? explanation;
     final rag = _ref.read(ragControllerProvider);
     if (rag.enabled && rag.canRagFor(bookId)) {
-      await _ref.read(ragControllerProvider.notifier).ensureSession();
+      // Skip ensureSession() if RAG is already connected — avoids an extra
+      // /health round-trip (saves 100-2000 ms on every explain).
+      if (!rag.connected) {
+        await _ref.read(ragControllerProvider.notifier).ensureSession();
+      }
       explanation = await _explainWithRag(
         backendBookId: rag.backendBookIdFor(bookId)!,
         pageNumber: pageNumber,
@@ -379,10 +383,22 @@ class HighlightsController extends StateNotifier<HighlightsState> {
 
   /// Collects a streaming response into a single string, updating
   /// `streamingText` in state so the UI can render tokens progressively.
+  ///
+  /// State is updated at most once every 50 ms (throttled) to avoid a
+  /// Riverpod rebuild on every single token, which caused UI jank.
   Future<String> _collectStream(Stream<String> stream) async {
     final buffer = StringBuffer();
+    var lastStateUpdate = DateTime.now();
     await for (final token in stream) {
       buffer.write(token);
+      final now = DateTime.now();
+      if (now.difference(lastStateUpdate).inMilliseconds >= 50) {
+        state = state.copyWith(streamingText: buffer.toString());
+        lastStateUpdate = now;
+      }
+    }
+    // Final flush — always emit the complete text after the stream closes.
+    if (buffer.isNotEmpty) {
       state = state.copyWith(streamingText: buffer.toString());
     }
     return buffer.toString();

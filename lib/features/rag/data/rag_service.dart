@@ -10,15 +10,26 @@ class RagService {
 
   final RagStore _store;
 
+  // Cached Dio instance — reused across all requests to preserve TCP
+  // connection pooling and avoid per-call HTTP handshake overhead.
+  // Recreated only when the backend base URL changes.
+  Dio? _cachedDio;
+  String _cachedBaseUrl = '';
+
   Dio _dio() {
     final config = _store.getConfig();
-    return Dio(
-      BaseOptions(
-        baseUrl: config.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 120),
-      ),
-    );
+    if (_cachedDio == null || config.baseUrl != _cachedBaseUrl) {
+      _cachedDio?.close(force: true);
+      _cachedBaseUrl = config.baseUrl;
+      _cachedDio = Dio(
+        BaseOptions(
+          baseUrl: config.baseUrl,
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
+      );
+    }
+    return _cachedDio!;
   }
 
   Future<String> _userId() async {
