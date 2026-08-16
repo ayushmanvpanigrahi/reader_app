@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,12 +24,22 @@ class PdfReaderScreen extends ConsumerStatefulWidget {
 
 class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
   late final PdfViewerController _pdfController;
+  Timer? _progressDebounce;
+  int? _pendingPage;
+  int? _pendingTotalPages;
 
   @override
   void initState() {
     super.initState();
     _pdfController = PdfViewerController();
     _maybeIngestForRag();
+  }
+
+  @override
+  void dispose() {
+    _progressDebounce?.cancel();
+    if (_pendingPage != null) _flushProgress();
+    super.dispose();
   }
 
   void _maybeIngestForRag() {
@@ -58,6 +69,20 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
 
   void _onPageChanged(int page, int totalPages) {
     ref.read(pdfReaderControllerProvider(widget.book.id).notifier).onPageChanged(page);
+    // Debounce the disk write so rapid page flips don't hammer storage.
+    _pendingPage = page;
+    _pendingTotalPages = totalPages;
+    _progressDebounce?.cancel();
+    _progressDebounce = Timer(const Duration(seconds: 2), _flushProgress);
+  }
+
+  void _flushProgress() {
+    _progressDebounce?.cancel();
+    final page = _pendingPage;
+    final totalPages = _pendingTotalPages;
+    if (page == null || totalPages == null) return;
+    _pendingPage = null;
+    _pendingTotalPages = null;
     final progress = totalPages > 0 ? (page / totalPages) : 0.0;
     ref.read(libraryControllerProvider.notifier).updateBookProgress(
           bookId: widget.book.id,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
@@ -24,12 +25,21 @@ class EpubReaderScreen extends ConsumerStatefulWidget {
 
 class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
   late final EpubController _epubController;
+  Timer? _progressDebounce;
+  double? _pendingProgress;
 
   @override
   void initState() {
     super.initState();
     _epubController = EpubController();
     _maybeIngestForRag();
+  }
+
+  @override
+  void dispose() {
+    _progressDebounce?.cancel();
+    if (_pendingProgress != null) _flushProgress();
+    super.dispose();
   }
 
   void _maybeIngestForRag() {
@@ -42,6 +52,17 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
 
   void _syncProgress(double progress) {
     ref.read(epubReaderControllerProvider(widget.book.id).notifier).setProgress(progress);
+    // Debounce the disk write so rapid paging doesn't hammer storage.
+    _pendingProgress = progress;
+    _progressDebounce?.cancel();
+    _progressDebounce = Timer(const Duration(seconds: 2), _flushProgress);
+  }
+
+  void _flushProgress() {
+    _progressDebounce?.cancel();
+    final progress = _pendingProgress;
+    if (progress == null) return;
+    _pendingProgress = null;
     ref.read(libraryControllerProvider.notifier).updateBookProgress(
           bookId: widget.book.id,
           currentPage: (progress * widget.book.totalPages).round().clamp(1, widget.book.totalPages),
