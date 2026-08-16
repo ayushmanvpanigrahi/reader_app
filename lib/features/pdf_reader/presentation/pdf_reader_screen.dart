@@ -122,10 +122,28 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     return effectivePage <= 1;
   }
 
+  Axis? _lastScrollDirection;
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pdfReaderControllerProvider(widget.book.id));
     final controller = ref.read(pdfReaderControllerProvider(widget.book.id).notifier);
+
+    // If scroll direction switched, force pdfrx to re-layout with the new
+    // layoutPages callback. pdfrx requires an explicit invalidate() call
+    // after param changes that affect page layout.
+    if (_lastScrollDirection != null && _lastScrollDirection != state.scrollDirection) {
+      _lastScrollDirection = state.scrollDirection;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pdfController.isReady) {
+          _pdfController.invalidate();
+          _pdfController.goToPage(pageNumber: state.currentPage);
+        }
+      });
+    } else {
+      _lastScrollDirection = state.scrollDirection;
+    }
+
     final bookmarksState = ref.watch(bookmarksControllerProvider);
     final bookmarksController = ref.read(bookmarksControllerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -149,6 +167,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
         initialPageNumber: widget.book.currentPage < 1 ? 1 : widget.book.currentPage,
         params: PdfViewerParams(
           margin: 8,
+          layoutPages: state.scrollDirection == Axis.horizontal ? _layoutHorizontal : null,
           scrollPhysics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
@@ -322,12 +341,35 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     );
   }
 
+  static PdfPageLayout _layoutHorizontal(
+    List<PdfPage> pages,
+    PdfViewerParams params,
+  ) {
+    final margin = params.margin;
+    double maxHeight = 0;
+    for (final page in pages) {
+      if (page.height > maxHeight) maxHeight = page.height;
+    }
+    double currentX = margin;
+    final rects = <Rect>[];
+    for (final page in pages) {
+      final top = margin + (maxHeight - page.height) / 2;
+      rects.add(Rect.fromLTWH(currentX, top, page.width, page.height));
+      currentX += page.width + margin;
+    }
+    return PdfPageLayout(
+      pageLayouts: rects,
+      documentSize: Size(currentX, maxHeight + margin * 2),
+    );
+  }
+
   Widget _buildSamplePdfView(
     bool isDark,
     PdfReaderState state,
     PdfReaderController controller,
   ) {
     return PageView.builder(
+      scrollDirection: state.scrollDirection,
       itemCount: 15,
       controller: PageController(initialPage: (widget.book.currentPage - 1).clamp(0, 14)),
       onPageChanged: (page) {
