@@ -10,6 +10,22 @@ enum BookFormat {
   }
 }
 
+enum EnrichmentStatus {
+  notNeeded,
+  pending,
+  enriching,
+  completed,
+  failed;
+
+  static EnrichmentStatus fromString(String? val) {
+    if (val == null) return EnrichmentStatus.notNeeded;
+    return EnrichmentStatus.values.firstWhere(
+      (e) => e.name == val,
+      orElse: () => EnrichmentStatus.notNeeded,
+    );
+  }
+}
+
 class BookModel {
   final String id;
   final String title;
@@ -26,6 +42,7 @@ class BookModel {
   final DateTime? lastReadAt;
   final DateTime addedAt;
   final bool isAssetSample;
+  final EnrichmentStatus enrichmentStatus;
 
   const BookModel({
     required this.id,
@@ -43,6 +60,7 @@ class BookModel {
     this.lastReadAt,
     required this.addedAt,
     this.isAssetSample = false,
+    this.enrichmentStatus = EnrichmentStatus.notNeeded,
   });
 
   double get progressPercentage => (progress * 100).clamp(0, 100);
@@ -66,6 +84,7 @@ class BookModel {
     DateTime? lastReadAt,
     DateTime? addedAt,
     bool? isAssetSample,
+    EnrichmentStatus? enrichmentStatus,
   }) {
     return BookModel(
       id: id ?? this.id,
@@ -83,6 +102,7 @@ class BookModel {
       lastReadAt: lastReadAt ?? this.lastReadAt,
       addedAt: addedAt ?? this.addedAt,
       isAssetSample: isAssetSample ?? this.isAssetSample,
+      enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
     );
   }
 
@@ -103,6 +123,7 @@ class BookModel {
       'lastReadAt': lastReadAt?.toIso8601String(),
       'addedAt': addedAt.toIso8601String(),
       'isAssetSample': isAssetSample,
+      'enrichmentStatus': enrichmentStatus.name,
     };
   }
 
@@ -127,6 +148,7 @@ class BookModel {
           ? (DateTime.tryParse(map['addedAt'] as String) ?? DateTime.now())
           : DateTime.now(),
       isAssetSample: map['isAssetSample'] as bool? ?? false,
+      enrichmentStatus: EnrichmentStatus.fromString(map['enrichmentStatus'] as String?),
     );
   }
 

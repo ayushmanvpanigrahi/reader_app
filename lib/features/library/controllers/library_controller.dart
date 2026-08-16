@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../data/local_storage_service.dart';
 import '../data/models/book_model.dart';
+import '../data/parsers/book_metadata_parser.dart';
 
 enum LibraryFilter { all, pdf, epub, reading, finished, favorites }
+
 enum LibraryViewMode { grid, list }
 
 class LibraryState {
@@ -39,7 +41,9 @@ class LibraryState {
         result = result.where((b) => b.isEpub).toList();
         break;
       case LibraryFilter.reading:
-        result = result.where((b) => b.progress > 0.0 && b.progress < 1.0).toList();
+        result = result
+            .where((b) => b.progress > 0.0 && b.progress < 1.0)
+            .toList();
         break;
       case LibraryFilter.finished:
         result = result.where((b) => b.progress >= 1.0).toList();
@@ -82,14 +86,16 @@ class LibraryState {
 }
 
 final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
-  throw UnimplementedError('Initialize localStorageServiceProvider in main.dart');
+  throw UnimplementedError(
+    'Initialize localStorageServiceProvider in main.dart',
+  );
 });
 
 final libraryControllerProvider =
     StateNotifierProvider<LibraryController, LibraryState>((ref) {
-  final storage = ref.watch(localStorageServiceProvider);
-  return LibraryController(storage);
-});
+      final storage = ref.watch(localStorageServiceProvider);
+      return LibraryController(storage);
+    });
 
 class LibraryController extends StateNotifier<LibraryState> {
   final LocalStorageService _storage;
@@ -102,6 +108,16 @@ class LibraryController extends StateNotifier<LibraryState> {
     state = state.copyWith(isLoading: true);
     final books = _storage.getBooks();
     state = state.copyWith(books: books, isLoading: false);
+  }
+
+  /// Updates a single book in state without triggering a full disk reload.
+  void updateBookInState(BookModel updated) {
+    final list = [...state.books];
+    final index = list.indexWhere((b) => b.id == updated.id);
+    if (index >= 0) {
+      list[index] = updated;
+      state = state.copyWith(books: list);
+    }
   }
 
   /// Clears any pending import error after the UI has shown it.
@@ -138,11 +154,12 @@ class LibraryController extends StateNotifier<LibraryState> {
         return null;
       }
 
-
       final platformFile = result.first;
       final path = platformFile.path;
       if (path == null || path.isEmpty) {
-        state = state.copyWith(errorMessage: 'Could not access the selected file path.');
+        state = state.copyWith(
+          errorMessage: 'Could not access the selected file path.',
+        );
         return null;
       }
 
@@ -153,17 +170,29 @@ class LibraryController extends StateNotifier<LibraryState> {
       }
 
       final extension = p.extension(path).toLowerCase();
-      final format = extension.contains('epub') ? BookFormat.epub : BookFormat.pdf;
-      final rawName = p.basenameWithoutExtension(path);
-      
-      // Clean up common file naming artifacts
-      final title = _formatBookTitle(rawName);
+      final format = extension.contains('epub')
+          ? BookFormat.epub
+          : BookFormat.pdf;
       final fileSizeBytes = await file.length();
+
+      // Tier 1: Instant Native Metadata & Filename Pattern Parsing
+      final parsed = await BookMetadataParser.parseFile(path, format);
+      final isConfident =
+          parsed.isConfident &&
+          parsed.author != null &&
+          parsed.author!.isNotEmpty;
+      final author = isConfident
+          ? parsed.author!
+          : (parsed.author ?? 'Imported Document');
+      final title = parsed.title;
+      final enrichmentStatus = isConfident
+          ? EnrichmentStatus.notNeeded
+          : EnrichmentStatus.pending;
 
       final newBook = BookModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: title,
-        author: 'Imported Document',
+        author: author,
         filePath: path,
         format: format,
         fileSizeBytes: fileSizeBytes,
@@ -174,6 +203,7 @@ class LibraryController extends StateNotifier<LibraryState> {
         isFavorite: false,
         addedAt: DateTime.now(),
         lastReadAt: DateTime.now(),
+        enrichmentStatus: enrichmentStatus,
       );
 
       await _storage.saveBook(newBook);
@@ -224,15 +254,5 @@ class LibraryController extends StateNotifier<LibraryState> {
   Future<void> deleteBook(String bookId) async {
     await _storage.deleteBook(bookId);
     loadBooks();
-  }
-
-  String _formatBookTitle(String filename) {
-    // Replace underscores and dashes with spaces
-    final cleaned = filename.replaceAll('_', ' ').replaceAll('-', ' ');
-    // Capitalize words
-    return cleaned.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
   }
 }

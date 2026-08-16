@@ -10,6 +10,7 @@ import 'package:reader_app/core/widgets/neumorphic_button.dart';
 import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
 import 'package:reader_app/features/library/data/models/book_model.dart';
+import 'package:reader_app/features/library/data/services/book_enrichment_service.dart';
 import 'package:reader_app/features/rag/controllers/rag_controller.dart';
 import '../controllers/epub_reader_controller.dart';
 import 'widgets/epub_toc_sheet.dart';
@@ -36,6 +37,7 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
     _epubController = EpubController();
     _isRestoringPosition = widget.book.progress > 0.01;
     _maybeIngestForRag();
+    _maybeEnrichMetadata();
   }
 
   @override
@@ -51,6 +53,14 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(ragControllerProvider.notifier).ingestBook(widget.book);
     });
+  }
+
+  void _maybeEnrichMetadata() {
+    if (widget.book.enrichmentStatus == EnrichmentStatus.pending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(bookEnrichmentServiceProvider).enqueue(widget.book);
+      });
+    }
   }
 
   void _syncProgress(double progress) {

@@ -9,6 +9,7 @@ import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.d
 import 'package:reader_app/features/highlights/presentation/highlight_explanation_sheet.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
 import 'package:reader_app/features/library/data/models/book_model.dart';
+import 'package:reader_app/features/library/data/services/book_enrichment_service.dart';
 import 'package:reader_app/features/rag/controllers/rag_controller.dart';
 import 'package:reader_app/features/rag/data/rag_models.dart';
 import '../controllers/pdf_reader_controller.dart';
@@ -35,6 +36,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     super.initState();
     _pdfController = PdfViewerController();
     _maybeIngestForRag();
+    _maybeEnrichMetadata();
   }
 
   @override
@@ -50,6 +52,14 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(ragControllerProvider.notifier).ingestBook(widget.book);
     });
+  }
+
+  void _maybeEnrichMetadata() {
+    if (widget.book.enrichmentStatus == EnrichmentStatus.pending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(bookEnrichmentServiceProvider).enqueue(widget.book);
+      });
+    }
   }
 
   Future<void> _explainSelection(PdfTextSelectionDelegate selection) async {
