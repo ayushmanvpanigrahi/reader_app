@@ -172,7 +172,8 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
               child: fileExists
                   ? EpubViewer(
                       epubController: _epubController,
-                      epubSource: EpubSource.fromFile(io.File(widget.book.filePath) as dynamic),
+                      epubSource: EpubSource.fromData(
+                          io.File(widget.book.filePath).readAsBytesSync()),
                       onChaptersLoaded: (chapters) {
 
                         final items = chapters.map((c) {

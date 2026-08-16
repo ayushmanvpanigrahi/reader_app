@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/bookmark_model.dart';
 import '../../library/controllers/library_controller.dart';
@@ -62,13 +63,32 @@ class BookmarksController extends StateNotifier<BookmarksState> {
       createdAt: DateTime.now(),
     );
 
-    await _storage.addBookmark(bookmark);
-    loadBookmarks();
+    // Optimistic update — UI responds instantly.
+    state = state.copyWith(bookmarks: [...state.bookmarks, bookmark]);
+    try {
+      await _storage.addBookmark(bookmark);
+    } catch (e, stack) {
+      debugPrint('[BookmarksController] addBookmark failed: $e\n$stack');
+      // Rollback optimistic update on failure.
+      state = state.copyWith(
+        bookmarks: state.bookmarks.where((b) => b.id != bookmark.id).toList(),
+      );
+    }
   }
 
   Future<void> removeBookmark(String bookmarkId) async {
-    await _storage.deleteBookmark(bookmarkId);
-    loadBookmarks();
+    // Optimistic update — UI responds instantly.
+    final previous = state.bookmarks;
+    state = state.copyWith(
+      bookmarks: state.bookmarks.where((b) => b.id != bookmarkId).toList(),
+    );
+    try {
+      await _storage.deleteBookmark(bookmarkId);
+    } catch (e, stack) {
+      debugPrint('[BookmarksController] removeBookmark failed: $e\n$stack');
+      // Rollback on failure.
+      state = state.copyWith(bookmarks: previous);
+    }
   }
 
   bool isPageBookmarked(String bookId, int pageNumber) {

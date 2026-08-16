@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_config.dart';
@@ -175,8 +176,9 @@ class RagController extends StateNotifier<RagState> {
         }
       }
       state = state.copyWith(backendBooks: serverBooks, books: merged);
-    } catch (_) {
+    } catch (e, stack) {
       // Non-fatal: local book mapping still works.
+      debugPrint('[RagController] refreshIndexStatus failed: $e\n$stack');
     }
   }
 
@@ -207,7 +209,8 @@ class RagController extends StateNotifier<RagState> {
     try {
       state = state.copyWith(connected: true, lastHealth: health, lastCheckedAt: DateTime.now(), error: null);
       await syncProviders();
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[RagController] ensureSession syncProviders failed: $e\n$stack');
       state = state.copyWith(connected: false, error: 'RAG session failed.');
     }
   }
@@ -235,8 +238,9 @@ class RagController extends StateNotifier<RagState> {
     }
     try {
       await _service.syncProviders(providers);
-    } catch (_) {
+    } catch (e, stack) {
       // Non-fatal: backend falls back to its server-side provider settings.
+      debugPrint('[RagController] syncProviders failed: $e\n$stack');
     }
   }
 

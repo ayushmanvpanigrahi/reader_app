@@ -174,13 +174,13 @@ void main() {
       var s = base.recordCall(
         promptTokens: 5,
         completionTokens: 5,
-        latencyMs: 100,
+        latencyMs: 100.0,
         now: t0.add(const Duration(hours: 1)),
       );
       s = s.recordCall(
         promptTokens: 5,
         completionTokens: 5,
-        latencyMs: 100,
+        latencyMs: 100.0,
         now: t0.add(const Duration(hours: 2)),
       );
       expect(s.dailyHistory, hasLength(1));
@@ -192,14 +192,14 @@ void main() {
       var s = base.recordCall(
         promptTokens: 1,
         completionTokens: 1,
-        latencyMs: 10,
+        latencyMs: 10.0,
         now: t0,
       );
       final later = t0.add(const Duration(days: 35));
       s = s.recordCall(
         promptTokens: 1,
         completionTokens: 1,
-        latencyMs: 10,
+        latencyMs: 10.0,
         now: later,
       );
       expect(s.dailyHistory, hasLength(1));

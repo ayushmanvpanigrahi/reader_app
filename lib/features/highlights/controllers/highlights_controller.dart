@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai_provider/data/models/ai_message.dart';
@@ -201,7 +202,8 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       }
       if (parsed != null && parsed.simpleMeaning.isNotEmpty) return parsed;
       return null;
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[HighlightsController] _parseExplain failed: $e\n$stack');
       return null;
     }
   }
@@ -221,7 +223,8 @@ class HighlightsController extends StateNotifier<HighlightsState> {
             maxTokens: 600,
           );
       return _parseExplanation(raw);
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[HighlightsController] _retryExplain failed: $e\n$stack');
       return null;
     }
   }

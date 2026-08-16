@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api_config.dart';
@@ -50,7 +51,8 @@ class RagStore {
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       return decoded.map((k, v) => MapEntry(k, v as String));
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[RagStore] Failed to decode book ID map: $e\n$stack');
       return {};
     }
   }

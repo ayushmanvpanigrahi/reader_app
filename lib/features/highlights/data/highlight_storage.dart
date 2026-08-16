@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'highlight_model.dart';
@@ -23,7 +24,9 @@ class HighlightStorage {
     for (final value in box.values) {
       try {
         result.add(HighlightModel.fromJson(jsonDecode(value) as Map<String, dynamic>));
-      } catch (_) {}
+      } catch (e, stack) {
+        debugPrint('[HighlightStorage] Failed to decode highlight: $e\n$stack');
+      }
     }
     result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return result;
@@ -51,7 +54,9 @@ class HighlightStorage {
       try {
         final json = jsonDecode(entry.value) as Map<String, dynamic>;
         if (json['bookId'] == bookId) toRemove.add(entry.key);
-      } catch (_) {}
+      } catch (e, stack) {
+        debugPrint('[HighlightStorage] Failed to decode highlight for clearBook: $e\n$stack');
+      }
     }
     await box.deleteAll(toRemove);
   }

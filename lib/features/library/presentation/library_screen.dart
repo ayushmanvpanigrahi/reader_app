@@ -249,11 +249,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final book = state.filteredBooks[index];
-                      return BookGridCard(
-                        book: book,
-                        onTap: () => _openBook(book),
-                        onToggleFavorite: () => controller.toggleFavorite(book.id),
-                        onDelete: () => controller.deleteBook(book.id),
+                      return RepaintBoundary(
+                        child: BookGridCard(
+                          book: book,
+                          onTap: () => _openBook(book),
+                          onToggleFavorite: () => controller.toggleFavorite(book.id),
+                          onDelete: () => controller.deleteBook(book.id),
+                        ),
                       );
                     },
                     childCount: state.filteredBooks.length,
@@ -267,11 +269,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final book = state.filteredBooks[index];
-                      return BookListCard(
-                        book: book,
-                        onTap: () => _openBook(book),
-                        onToggleFavorite: () => controller.toggleFavorite(book.id),
-                        onDelete: () => controller.deleteBook(book.id),
+                      return RepaintBoundary(
+                        child: BookListCard(
+                          book: book,
+                          onTap: () => _openBook(book),
+                          onToggleFavorite: () => controller.toggleFavorite(book.id),
+                          onDelete: () => controller.deleteBook(book.id),
+                        ),
                       );
                     },
                     childCount: state.filteredBooks.length,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -237,7 +238,8 @@ class LocalStorageService {
     if (raw == null) return null;
     try {
       return BookModel.fromJson(raw);
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[LocalStorage] Failed to decode BookModel: $e\n$stack');
       return null;
     }
   }
@@ -246,7 +248,8 @@ class LocalStorageService {
     if (raw == null) return null;
     try {
       return BookmarkModel.fromJson(raw);
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[LocalStorage] Failed to decode BookmarkModel: $e\n$stack');
       return null;
     }
   }
