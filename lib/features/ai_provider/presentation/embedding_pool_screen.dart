@@ -21,7 +21,7 @@ class EmbeddingPoolScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          StatusBanner(
+          const StatusBanner(
             tone: StatusTone.info,
             title: 'Priority order',
             message:

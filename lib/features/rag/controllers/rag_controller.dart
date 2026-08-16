@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_config.dart';
@@ -263,7 +265,7 @@ class RagController extends StateNotifier<RagState> {
       state = state.copyWith(
         books: {
           ...state.books,
-          book.id: RagBookIndex(status: RagBookStatus.failed, error: 'Book file not found on device.'),
+          book.id: const RagBookIndex(status: RagBookStatus.failed, error: 'Book file not found on device.'),
         },
       );
       return;
@@ -304,10 +306,14 @@ class RagController extends StateNotifier<RagState> {
   }
 
   Future<void> _pollIngest(String appBookId, String taskId) async {
+    var consecutiveNetworkErrors = 0;
     for (var attempt = 0; attempt < 240; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      // Exponential backoff with a cap: 1s -> 1.4s -> ... -> 8s max.
+      final delayMs = min(1000 * pow(1.4, attempt ~/ 4).toInt(), 8000);
+      await Future<void>.delayed(Duration(milliseconds: delayMs));
       try {
         final status = await _service.ingestStatus(taskId);
+        consecutiveNetworkErrors = 0;
         final taskStatus = status['status'] as String? ?? 'queued';
         final progress = (status['progress'] as num?)?.toDouble() ?? 0;
         final backendId = status['book_id'] as String?;
@@ -347,6 +353,25 @@ class RagController extends StateNotifier<RagState> {
             ),
           },
         );
+      } on DioException catch (e) {
+        final isNetwork = e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.sendTimeout;
+        consecutiveNetworkErrors = isNetwork ? consecutiveNetworkErrors + 1 : 0;
+        if (consecutiveNetworkErrors >= 3) {
+          state = state.copyWith(
+            books: {
+              ...state.books,
+              appBookId: const RagBookIndex(
+                status: RagBookStatus.failed,
+                error: 'Backend unreachable while indexing — check your connection.',
+              ),
+            },
+          );
+          return;
+        }
+        // transient network blip — keep waiting
       } catch (_) {
         // transient polling error — keep waiting
       }
@@ -354,7 +379,7 @@ class RagController extends StateNotifier<RagState> {
     state = state.copyWith(
       books: {
         ...state.books,
-        appBookId: RagBookIndex(status: RagBookStatus.failed, error: 'Ingest timed out.'),
+        appBookId: const RagBookIndex(status: RagBookStatus.failed, error: 'Ingest timed out.'),
       },
     );
   }

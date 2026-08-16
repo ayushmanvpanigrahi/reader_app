@@ -105,7 +105,7 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
       if (models.models.isNotEmpty) {
         await ref.read(modelRepositoryProvider).cache(provider.id, models.models);
       }
-      ref.read(providerListProvider.notifier).refresh();
+      await ref.read(providerListProvider.notifier).refresh();
       setState(() {
         _retestSucceeded = true;
         _retestResult =

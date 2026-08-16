@@ -94,35 +94,43 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
+  bool _sending = false;
+
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || state.isStreaming) return;
-
-    final active = _ref.read(activeProviderProvider).value;
-    final provider = active?.provider;
-    if (provider == null || !active!.isConfigured || _configuredModelId.isEmpty) {
-      state = state.copyWith(error: 'Configure an AI provider in Settings to chat.');
-      return;
-    }
-
-    final ragBookId = state.ragBookId;
-    if (ragBookId != null) {
-      final ragController = _ref.read(ragControllerProvider.notifier);
-      await ragController.ensureSession();
-      final canRag = _ref.read(ragControllerProvider).canRagFor(ragBookId);
-      if (canRag) {
-        final backendId = _ref.read(ragControllerProvider).backendBookIdFor(ragBookId)!;
-        await _sendWithRag(text, backendId, ragBookId, state.ragBookTitle ?? '');
+    // _sending is set synchronously before the first await so a fast
+    // double-tap cannot slip two messages through the async isStreaming guard.
+    if (trimmed.isEmpty || _sending || state.isStreaming) return;
+    _sending = true;
+    try {
+      final active = _ref.read(activeProviderProvider).value;
+      final provider = active?.provider;
+      if (provider == null || !active!.isConfigured || _configuredModelId.isEmpty) {
+        state = state.copyWith(error: 'Configure an AI provider in Settings to chat.');
         return;
       }
-      state = state.copyWith(
-        notice:
-            '“${state.ragBookTitle ?? 'Selected book'}” is not indexed yet — '
-            'answering without book context. Select it in the RAG bar to index it.',
-      );
-    }
 
-    await _sendDirect(trimmed, provider.id);
+      final ragBookId = state.ragBookId;
+      if (ragBookId != null) {
+        final ragController = _ref.read(ragControllerProvider.notifier);
+        await ragController.ensureSession();
+        final canRag = _ref.read(ragControllerProvider).canRagFor(ragBookId);
+        if (canRag) {
+          final backendId = _ref.read(ragControllerProvider).backendBookIdFor(ragBookId)!;
+          await _sendWithRag(text, backendId, ragBookId, state.ragBookTitle ?? '');
+          return;
+        }
+        state = state.copyWith(
+          notice:
+              '“${state.ragBookTitle ?? 'Selected book'}” is not indexed yet — '
+              'answering without book context. Select it in the RAG bar to index it.',
+        );
+      }
+
+      await _sendDirect(trimmed, provider.id);
+    } finally {
+      _sending = false;
+    }
   }
 
   Future<void> _sendDirect(String trimmed, String providerId) async {

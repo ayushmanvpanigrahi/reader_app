@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
@@ -21,11 +23,28 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        ref.read(libraryControllerProvider.notifier).setSearchQuery(query);
+      }
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    ref.read(libraryControllerProvider.notifier).setSearchQuery('');
   }
 
   void _openBook(BookModel book) {
@@ -123,7 +142,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          onChanged: controller.setSearchQuery,
+                          onChanged: _onSearchChanged,
                           style: TextStyle(
                             fontSize: 14,
                             color: isDark ? AppColors.darkInk : AppColors.lightInk,
@@ -142,10 +161,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       ),
                       if (_searchController.text.isNotEmpty)
                         GestureDetector(
-                          onTap: () {
-                            _searchController.clear();
-                            controller.setSearchQuery('');
-                          },
+                          onTap: _clearSearch,
                           child: Icon(
                             Icons.close_rounded,
                             size: 18,

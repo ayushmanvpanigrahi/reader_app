@@ -22,14 +22,16 @@ import 'features/settings/controllers/settings_controller.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize local persistent storage
-  final storageService = await LocalStorageService.init();
+  // Hive must be initialized before LocalStorageService opens its boxes.
   await Hive.initFlutter();
   Hive.registerAdapter(AIProviderAdapter());
   Hive.registerAdapter(AIModelInfoAdapter());
   Hive.registerAdapter(RateLimitSnapshotAdapter());
   Hive.registerAdapter(UsageStatsAdapter());
   Hive.registerAdapter(DailyUsageBucketAdapter());
+
+  // Initialize local persistent storage
+  final storageService = await LocalStorageService.init();
   final providerRepository = ProviderRepository();
   await providerRepository.init();
   final modelRepository = ModelRepository();

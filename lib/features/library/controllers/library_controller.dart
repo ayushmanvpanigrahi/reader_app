@@ -68,6 +68,7 @@ class LibraryState {
     LibraryFilter? filter,
     LibraryViewMode? viewMode,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return LibraryState(
       books: books ?? this.books,
@@ -75,7 +76,7 @@ class LibraryState {
       searchQuery: searchQuery ?? this.searchQuery,
       filter: filter ?? this.filter,
       viewMode: viewMode ?? this.viewMode,
-      errorMessage: errorMessage,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -101,6 +102,13 @@ class LibraryController extends StateNotifier<LibraryState> {
     state = state.copyWith(isLoading: true);
     final books = _storage.getBooks();
     state = state.copyWith(books: books, isLoading: false);
+  }
+
+  /// Clears any pending import error after the UI has shown it.
+  void clearError() {
+    if (state.errorMessage != null) {
+      state = state.copyWith(clearError: true);
+    }
   }
 
   void setSearchQuery(String query) {

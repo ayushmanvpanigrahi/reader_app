@@ -72,7 +72,7 @@ class UsageSparkline extends StatelessWidget {
                     BarChartData(
                       maxY: maxVal == 0 ? 1 : maxVal * 1.2,
                       alignment: BarChartAlignment.spaceAround,
-                      barTouchData: BarTouchData(enabled: false),
+                      barTouchData: const BarTouchData(enabled: false),
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,

@@ -75,11 +75,11 @@ class _RagSetupCardState extends ConsumerState<RagSetupCard> {
                     fontSize: 13,
                     color: isDark ? AppColors.darkInk : AppColors.lightInk,
                   ),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Backend URL',
                     hintText: 'https://your-service.onrender.com',
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   ),
                   onSubmitted: (v) => _saveAndTest(controller),
                 ),

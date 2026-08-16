@@ -96,7 +96,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
         controller: _pdfController,
         params: PdfViewerParams(
           margin: 8,
-          textSelectionParams: PdfTextSelectionParams(
+          textSelectionParams: const PdfTextSelectionParams(
             enabled: true,
             showContextMenuAutomatically: true,
           ),

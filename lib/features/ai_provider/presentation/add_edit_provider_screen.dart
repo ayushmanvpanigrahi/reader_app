@@ -217,7 +217,7 @@ class _AddEditProviderScreenState extends ConsumerState<AddEditProviderScreen> {
         await ref.read(activeProviderProvider.notifier).setActiveProvider(id);
       }
 
-      ref.read(providerListProvider.notifier).refresh();
+      await ref.read(providerListProvider.notifier).refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_isEdit ? 'Provider updated.' : 'Provider added.')),

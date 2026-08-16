@@ -633,11 +633,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
       decoration: isUser
           ? BoxDecoration(
               color: primary,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: const Radius.circular(18),
-                bottomRight: const Radius.circular(4),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(4),
               ),
             )
           : NeumorphicDecorations.boxDecoration(
