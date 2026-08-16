@@ -24,6 +24,7 @@ Future<void> showHighlightExplanationSheet(
   required String bookTitle,
   required int pageNumber,
   required String selectedText,
+  String? pageContext,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -34,6 +35,7 @@ Future<void> showHighlightExplanationSheet(
       bookTitle: bookTitle,
       pageNumber: pageNumber,
       selectedText: selectedText,
+      pageContext: pageContext,
     ),
   );
 }
@@ -43,6 +45,9 @@ class HighlightExplanationSheet extends ConsumerStatefulWidget {
   final String bookTitle;
   final int pageNumber;
   final String selectedText;
+  /// Optional: full text of the current page, used to give the AI
+  /// richer context around the selected passage (same as Glossy app).
+  final String? pageContext;
 
   const HighlightExplanationSheet({
     super.key,
@@ -50,6 +55,7 @@ class HighlightExplanationSheet extends ConsumerStatefulWidget {
     required this.bookTitle,
     required this.pageNumber,
     required this.selectedText,
+    this.pageContext,
   });
 
   @override
@@ -144,6 +150,7 @@ class _HighlightExplanationSheetState
           bookTitle: widget.bookTitle,
           pageNumber: widget.pageNumber,
           selectedText: _currentText,
+          pageContext: widget.pageContext,
         );
     _stopStatusTimers();
     if (!mounted) return;

@@ -67,13 +67,31 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     try {
       final text = await selection.getSelectedText();
       if (!mounted || text.trim().isEmpty) return;
-      final state = ref.read(pdfReaderControllerProvider(widget.book.id));
+      final readerState = ref.read(pdfReaderControllerProvider(widget.book.id));
+      final currentPage = readerState.currentPage;
+
+      // Extract the full current-page text to give the AI richer context
+      // (same approach as the original Glossy app — surroundingPageText).
+      String? pageContext;
+      try {
+        final document = await PdfDocument.openFile(widget.book.filePath);
+        // pages is 0-indexed, PDF page numbers are 1-indexed.
+        final pageIndex = (currentPage - 1).clamp(0, document.pages.length - 1);
+        final rawText = await document.pages[pageIndex].loadText();
+        pageContext = rawText?.fullText.trim();
+        await document.dispose();
+      } catch (_) {
+        // Non-fatal: explain still works without page context.
+      }
+
+      if (!mounted) return;
       await showHighlightExplanationSheet(
         context,
         bookId: widget.book.id,
         bookTitle: widget.book.title,
-        pageNumber: state.currentPage,
+        pageNumber: currentPage,
         selectedText: text,
+        pageContext: pageContext,
       );
     } catch (_) {
       // Ignore selection failures.

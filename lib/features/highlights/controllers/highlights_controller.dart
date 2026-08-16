@@ -104,6 +104,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     required String bookTitle,
     required int pageNumber,
     required String selectedText,
+    String? pageContext, // full current-page text for richer AI context
   }) async {
     if (state.isExplaining) return null;
 
@@ -140,7 +141,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     }
 
     if (explanation == null) {
-      final prompt = _buildPrompt(cleanedText);
+      final prompt = _buildPrompt(cleanedText, pageContext: pageContext);
       try {
         final stream = await _ref.read(chatClientProvider).streamChat(
               modelId: modelId,
@@ -196,7 +197,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     final assistantContent = _formatExplanationAsText(explanation);
     state = state.copyWith(
       conversationHistory: [
-        ChatMessage(role: 'system', content: _buildFollowUpSystemContext(cleanedText, explanation)),
+        ChatMessage(role: 'system', content: _buildFollowUpSystemContext(cleanedText, explanation, pageContext: pageContext)),
         ChatMessage(role: 'assistant', content: assistantContent),
       ],
       clearStreamingText: true,
@@ -432,7 +433,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     return (specialCount / len) > 0.10;
   }
 
-  String _buildPrompt(String selectedText) {
+  String _buildPrompt(String selectedText, {String? pageContext}) {
     final garbled = isLikelyGarbled(selectedText);
     final buffer = StringBuffer();
     buffer.writeln('You are an expert reading companion that explains a highlighted passage from a book.');
@@ -442,12 +443,22 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         '\n[NOTE ON TEXT ENCODING]:\n'
         'The selected text below was extracted from a PDF that uses legacy 8-bit font encoding '
         '(such as Sanskrit / Hindi / Devanagari KrutiDev, Chanakya, Walkman, or DV-Surekh font). '
-        'The characters appear as garbled ASCII (e.g. "TaÀ Sa&SMa*TYa" for "tach cha saṁsmṛtya"). '
+        'The characters appear as garbled ASCII (e.g. "TaÀ Sa&SMa*TYa" for "tach cha saṃsmṛtya"). '
         'Using your knowledge of Indian scriptures and literature (like Bhagavad Gita, Upanishads, etc.), '
         'verse markers, numbers (e.g. 77 -> Gita 18.77), and phonetic patterns, identify what this '
         'passage/verse actually is, restore its authentic text, and provide the 5-part explanation '
         'based on the deciphered passage.\n',
       );
+    }
+
+    // If the surrounding page text is available, include it so the AI has
+    // richer context for a more accurate and grounded explanation.
+    if (pageContext != null && pageContext.trim().isNotEmpty) {
+      // Cap at ~3000 chars to stay within token budget while still providing
+      // meaningful context (same strategy as the original Glossy app).
+      final trimmed = pageContext.trim();
+      final ctx = trimmed.length > 3000 ? '${trimmed.substring(0, 3000)}...' : trimmed;
+      buffer.writeln('\nPage context (the full page from which the passage was taken):\n"""\n$ctx\n"""\n');
     }
 
     buffer.writeln(
@@ -465,10 +476,16 @@ class HighlightsController extends StateNotifier<HighlightsState> {
 
   /// Builds a system context message that seeds the follow-up conversation
   /// with full knowledge of the passage and the 5-part explanation.
-  String _buildFollowUpSystemContext(String passage, HighlightExplanation explanation) {
-    return 'You are a reading companion. The user selected this passage:\n'
-        '"""\n$passage\n"""\n\n'
-        'You explained it with these 5 sections:\n'
+  String _buildFollowUpSystemContext(String passage, HighlightExplanation explanation, {String? pageContext}) {
+    final sb = StringBuffer();
+    sb.write('You are a reading companion. The user selected this passage:\n'
+        '"""\n$passage\n"""\n\n');
+    if (pageContext != null && pageContext.trim().isNotEmpty) {
+      final trimmed = pageContext.trim();
+      final ctx = trimmed.length > 2000 ? '${trimmed.substring(0, 2000)}...' : trimmed;
+      sb.write('This passage comes from this page:\n"""\n$ctx\n"""\n\n');
+    }
+    sb.write('You explained it with these 5 sections:\n'
         '- Simple Meaning: ${explanation.simpleMeaning}\n'
         '- Author\'s Context: ${explanation.authorContext}\n'
         '- Reflection Question: ${explanation.reflectionQuestion}\n'
@@ -476,7 +493,8 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         '- Key Takeaway: ${explanation.takeaway}\n\n'
         'Now the user is asking follow-up questions. Answer helpfully, '
         'maintaining full context of the original passage and your explanation. '
-        'Keep answers concise unless the user asks for detail.';
+        'Keep answers concise unless the user asks for detail.');
+    return sb.toString();
   }
 
   /// Formats the 5-part explanation into a readable string for the
