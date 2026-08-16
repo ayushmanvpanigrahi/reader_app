@@ -378,12 +378,15 @@ class _HighlightExplanationSheetState
     final chatMessages =
         conversation.where((m) => m.role != 'system').toList();
 
-    // Streaming in progress — show live text as it arrives.
-    if (isExplaining && streamingText != null && streamingText.isNotEmpty && _explanation == null) {
+    // Show the streaming container as soon as explain starts (even before
+    // the first token arrives) so the user sees "AI is writing..." immediately
+    // instead of a plain spinner. _StreamingState handles empty text with
+    // animated dots (waiting for first token).
+    if (isExplaining && streamingText != null && _explanation == null) {
       return _StreamingState(text: streamingText, isDark: isDark);
     }
 
-    // Still waiting (e.g. RAG path).
+    // Still waiting (e.g. no streamingText yet).
     if (isExplaining && _explanation == null) {
       return _LoadingState(status: _status);
     }
@@ -1045,6 +1048,7 @@ class _StreamingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+    final isEmpty = text.isEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1056,7 +1060,7 @@ class _StreamingState extends StatelessWidget {
               Icon(Icons.auto_awesome, size: 16, color: primary),
               const SizedBox(width: 8),
               Text(
-                'AI is writing...',
+                isEmpty ? 'Connecting to AI...' : 'AI is writing...',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1085,16 +1089,19 @@ class _StreamingState extends StatelessWidget {
                 borderRadius: 14,
                 depth: 2.5,
               ),
-              child: SingleChildScrollView(
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    height: 1.6,
-                    color: isDark ? AppColors.darkInk : AppColors.lightInk,
-                  ),
-                ),
-              ),
+              child: isEmpty
+                  // Waiting for first token — show animated dots
+                  ? const Center(child: _DotsAnimation())
+                  : SingleChildScrollView(
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.6,
+                          color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                        ),
+                      ),
+                    ),
             ),
           ),
         ],

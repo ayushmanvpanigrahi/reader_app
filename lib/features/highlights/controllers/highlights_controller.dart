@@ -503,9 +503,22 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         providerId: providerId,
       );
       HighlightExplanation? parsed;
+      var lastTokenUpdate = DateTime.now();
+      final tokenBuffer = StringBuffer();
       await for (final event in stream) {
         switch (event.type) {
           case 'token':
+            // Forward RAG tokens to streamingText so the UI shows live text
+            // instead of a blank spinner for the entire RAG call duration.
+            final token = event.data is String ? event.data as String : '';
+            if (token.isNotEmpty) {
+              tokenBuffer.write(token);
+              final now = DateTime.now();
+              if (now.difference(lastTokenUpdate).inMilliseconds >= 50) {
+                state = state.copyWith(streamingText: tokenBuffer.toString());
+                lastTokenUpdate = now;
+              }
+            }
             break;
           case 'done':
             final data = event.data as Map<String, dynamic>;
