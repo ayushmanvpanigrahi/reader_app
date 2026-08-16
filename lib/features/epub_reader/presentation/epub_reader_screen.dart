@@ -167,9 +167,8 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
           },
         );
       case 'dark':
-        // Night Charcoal: soft charcoal page. Images are dimmed and gently
-        // desaturated but never inverted, so diagrams keep their colors and
-        // nothing flips into blue/green negatives.
+        // Night Comfort: dimmed page with natural positive photos.
+        // Images keep their colours but are dimmed — zero blue/green artifacts.
         return EpubTheme.custom(
           foregroundColor: const Color(0xFFE2E2E2),
           customCss: <String, dynamic>{
@@ -222,7 +221,7 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
 
     final Color bgColor = switch (state.themePreset) {
       'sepia' => const Color(0xFFF4ECD8),
-      'dark' => const Color(0xFF1A1A1A),
+      'dark' => const Color(0xFF282420),
       'oled' => const Color(0xFF000000),
       _ => isDark ? AppColors.darkPaper : const Color(0xFFFDFAF4),
     };

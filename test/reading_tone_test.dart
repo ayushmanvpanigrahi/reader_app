@@ -48,31 +48,29 @@ void main() {
       );
     });
 
-    test('night charcoal maps white to #1A1A1A and black to #E2E2E2', () {
-      expectPixel(
-        kCharcoalToneMatrix,
-        [255, 255, 255, 255],
-        [26, 26, 26, 255],
-      );
-      expectPixel(
-        kCharcoalToneMatrix,
-        [0, 0, 0, 255],
-        [226, 226, 226, 255],
-      );
+    test('night comfort dims white without inverting — images stay natural', () {
+      // White page should dim to ~159 (comfortable gray), not flip to black.
+      final white = applyColorMatrix(kNightComfortToneMatrix, [255, 255, 255, 255]);
+      for (var ch = 0; ch < 3; ch++) {
+        expect(white[ch], closeTo(158.6, epsilon));
+      }
+      // Black text stays black (offset pushes toward 0, clamped).
+      final black = applyColorMatrix(kNightComfortToneMatrix, [0, 0, 0, 255]);
+      for (var ch = 0; ch < 3; ch++) {
+        expect(black[ch], closeTo(0, epsilon));
+      }
     });
 
-    test('night charcoal is luminance-based so colors never flip blue/green', () {
-      // A saturated red page would become cyan under a raw RGB negative; the
-      // charcoal matrix must keep every channel equal (monochrome) instead.
-      final red = applyColorMatrix(kCharcoalToneMatrix, [255, 0, 0, 255]);
-      final blue = applyColorMatrix(kCharcoalToneMatrix, [0, 0, 255, 255]);
-      for (final px in [red, blue]) {
-        expect(px[0], closeTo(px[1], epsilon));
-        expect(px[1], closeTo(px[2], epsilon));
-      }
-      // Mid-grays roll over smoothly (no harsh full-range flip).
-      final mid = applyColorMatrix(kCharcoalToneMatrix, [128, 128, 128, 255]);
-      expect(mid[0], closeTo(126, epsilon));
+    test('night comfort preserves image colors — no grayscale conversion', () {
+      // Per-channel dimming keeps hues: red stays red, green stays green.
+      final red = applyColorMatrix(kNightComfortToneMatrix, [255, 0, 0, 255]);
+      expect(red[0], closeTo(158.6, epsilon));
+      expect(red[1], closeTo(0, epsilon));
+      expect(red[2], closeTo(0, epsilon));
+      final green = applyColorMatrix(kNightComfortToneMatrix, [0, 255, 0, 255]);
+      expect(green[0], closeTo(0, epsilon));
+      expect(green[1], closeTo(158.6, epsilon));
+      expect(green[2], closeTo(0, epsilon));
     });
 
     test('e-ink oled maps white to pure black and black to pure white', () {
@@ -100,7 +98,7 @@ void main() {
     test('toneMatrixFor returns a matrix for every mode', () {
       expect(toneMatrixFor(PdfReadingMode.standard), kStandardToneMatrix);
       expect(toneMatrixFor(PdfReadingMode.sepia), kSepiaToneMatrix);
-      expect(toneMatrixFor(PdfReadingMode.charcoal), kCharcoalToneMatrix);
+      expect(toneMatrixFor(PdfReadingMode.nightComfort), kNightComfortToneMatrix);
       expect(toneMatrixFor(PdfReadingMode.oledDark), kOledDarkToneMatrix);
       for (final mode in PdfReadingMode.values) {
         expect(toneMatrixFor(mode), hasLength(20));

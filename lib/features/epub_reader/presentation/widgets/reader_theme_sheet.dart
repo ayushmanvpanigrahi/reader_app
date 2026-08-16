@@ -138,8 +138,8 @@ class ReaderThemeSheet extends StatelessWidget {
               _buildPresetCard(
                 context,
                 presetId: 'dark',
-                label: 'Night Charcoal',
-                bgColor: const Color(0xFF1A1A1A),
+                label: 'Night Comfort',
+                bgColor: const Color(0xFF282420),
                 textColor: const Color(0xFFE2E2E2),
               ),
               const SizedBox(width: 10),

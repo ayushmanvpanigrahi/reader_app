@@ -4,11 +4,14 @@ import '../../controllers/pdf_reader_controller.dart';
 
 /// Calibrated 4x5 color matrices for the reading tone suite.
 ///
-/// All dark modes use luminance-weighted inversion (out = k - l * L where
-/// L = 0.299R + 0.587G + 0.114B) instead of a raw RGB negative. Raw per-channel
-/// negation (255 - R, 255 - G, 255 - B) turns red content into cyan and skin
-/// tones into blue-green X-ray colors; the luminance approach keeps images as
-/// natural monochrome and guarantees no fluorescent artifacts.
+/// Dark modes split into two strategies:
+/// - **Night Comfort**: per-channel brightness dim (`0.72x − 25`) that keeps
+///   every photo and illustration in 100 % natural positive polarity — ideal
+///   for illustrated / photo-heavy books.
+/// - **E-Ink OLED**: luminance-weighted inversion (`255 − L`) that flips
+///   white pages to pure `#000000` and black text to `#FFFFFF` — ideal for
+///   text-only novels.  The cover page (page 1) is bypassed so original
+///   artwork always shows in full colour.
 
 /// Warm Sepia: parchment background, dark brown text, warm-tinted content.
 ///
@@ -20,15 +23,16 @@ const List<double> kSepiaToneMatrix = <double>[
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 
-/// Night Charcoal: soft `#1A1A1A` background with `#E2E2E2` text.
+/// Night Comfort: dimmed paper with 100 % natural positive photos.
 ///
-/// Compressed luminance inversion with slope -0.784 and offset 226 so white
-/// pages land on `#1A1A1A` and black text on `#E2E2E2`. Mid-tones roll off
-/// smoothly instead of flipping, keeping dark-mode contrast comfortable.
-const List<double> kCharcoalToneMatrix = <double>[
-  -0.2344, -0.4602, -0.0894, 0, 226,
-  -0.2344, -0.4602, -0.0894, 0, 226,
-  -0.2344, -0.4602, -0.0894, 0, 226,
+/// Scales every channel to 72 % and drops a flat −25 offset so the bright
+/// white page lands on a comfortable dim gray (~159) while black text stays
+/// black.  Coloured images simply get darker — no hue shift, no negative,
+/// no blue/green artifacts.  Best for illustrated and photo-heavy books.
+const List<double> kNightComfortToneMatrix = <double>[
+  0.72, 0.0, 0.0, 0, -25,
+  0.0, 0.72, 0.0, 0, -25,
+  0.0, 0.0, 0.72, 0, -25,
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 
@@ -62,7 +66,7 @@ List<double> toneMatrixFor(PdfReadingMode mode) {
   return switch (mode) {
     PdfReadingMode.standard => kStandardToneMatrix,
     PdfReadingMode.sepia => kSepiaToneMatrix,
-    PdfReadingMode.charcoal => kCharcoalToneMatrix,
+    PdfReadingMode.nightComfort => kNightComfortToneMatrix,
     PdfReadingMode.oledDark => kOledDarkToneMatrix,
   };
 }

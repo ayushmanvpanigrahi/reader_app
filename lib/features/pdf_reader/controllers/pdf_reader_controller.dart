@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum PdfReadingMode { standard, sepia, charcoal, oledDark }
+enum PdfReadingMode { standard, sepia, nightComfort, oledDark }
 
 class PdfReaderState {
   final int currentPage;

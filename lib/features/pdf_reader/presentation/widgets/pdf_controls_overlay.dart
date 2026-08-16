@@ -195,6 +195,7 @@ class PdfControlsOverlay extends StatelessWidget {
                 _buildModeOption(
                   ctx,
                   label: 'Original',
+                  subtitle: 'Standard daytime white',
                   mode: PdfReadingMode.standard,
                   bgColor: Colors.white,
                   textColor: Colors.black87,
@@ -203,6 +204,7 @@ class PdfControlsOverlay extends StatelessWidget {
                 _buildModeOption(
                   ctx,
                   label: 'Warm Sepia',
+                  subtitle: 'Soft amber eye comfort',
                   mode: PdfReadingMode.sepia,
                   bgColor: const Color(0xFFF4ECD8),
                   textColor: const Color(0xFF5B4636),
@@ -214,15 +216,19 @@ class PdfControlsOverlay extends StatelessWidget {
               children: [
                 _buildModeOption(
                   ctx,
-                  label: 'Night Charcoal',
-                  mode: PdfReadingMode.charcoal,
-                  bgColor: const Color(0xFF1A1A1A),
+                  label: 'Night Comfort',
+                  subtitle: 'Best for illustrated & photo books',
+                  badge: 'Natural Photos',
+                  mode: PdfReadingMode.nightComfort,
+                  bgColor: const Color(0xFF282420),
                   textColor: const Color(0xFFE2E2E2),
                 ),
                 const SizedBox(width: 12),
                 _buildModeOption(
                   ctx,
                   label: 'E-Ink OLED',
+                  subtitle: 'Best for text-only novels',
+                  badge: 'True Black',
                   mode: PdfReadingMode.oledDark,
                   bgColor: const Color(0xFF000000),
                   textColor: const Color(0xFFFFFFFF),
@@ -238,6 +244,8 @@ class PdfControlsOverlay extends StatelessWidget {
   Widget _buildModeOption(
     BuildContext context, {
     required String label,
+    required String subtitle,
+    String? badge,
     required PdfReadingMode mode,
     required Color bgColor,
     required Color textColor,
@@ -252,7 +260,8 @@ class PdfControlsOverlay extends StatelessWidget {
           Navigator.pop(context);
         },
         child: Container(
-          height: 64,
+          height: 80,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -270,14 +279,48 @@ class PdfControlsOverlay extends StatelessWidget {
               ),
             ],
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: textColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: textColor.withValues(alpha: 0.7),
+                  fontSize: 9,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (badge != null) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: textColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
