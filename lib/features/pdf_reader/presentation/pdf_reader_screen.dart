@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_app/core/constants/app_colors.dart';
+import 'package:reader_app/core/widgets/tap_to_toggle.dart';
 import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.dart';
 import 'package:reader_app/features/highlights/presentation/highlight_explanation_sheet.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
@@ -193,10 +194,10 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
       backgroundColor: isDark ? AppColors.darkStage : AppColors.lightStage,
       body: Stack(
         children: [
-          // Gesture detector to toggle overlay HUD
-          GestureDetector(
+          // Raw pointer tap detection (bypasses the gesture arena the PDF
+          // engine wins) so a single tap always toggles the HUD.
+          TapToToggle(
             onTap: controller.toggleControls,
-            behavior: HitTestBehavior.translucent,
             child: RepaintBoundary(
               child: viewerWidget,
             ),

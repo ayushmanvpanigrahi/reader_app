@@ -5,6 +5,7 @@ import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_app/core/constants/app_colors.dart';
 import 'package:reader_app/core/theme/neumorphic_decorations.dart';
+import 'package:reader_app/core/widgets/tap_to_toggle.dart';
 import 'package:reader_app/core/widgets/neumorphic_button.dart';
 import 'package:reader_app/features/bookmarks/controllers/bookmarks_controller.dart';
 import 'package:reader_app/features/library/controllers/library_controller.dart';
@@ -167,10 +168,10 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
       backgroundColor: bgColor,
       body: Stack(
         children: [
-          // EPUB Viewer Content
-          GestureDetector(
+          // Raw pointer tap detection (bypasses the gesture arena the EPUB
+          // webview wins) so a single tap always toggles the HUD.
+          TapToToggle(
             onTap: controller.toggleControls,
-            behavior: HitTestBehavior.translucent,
             child: RepaintBoundary(
               child: fileExists
                   ? EpubViewer(
