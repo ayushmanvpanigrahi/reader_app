@@ -32,6 +32,10 @@ class HighlightsState {
   final HighlightExplanation? lastExplanation;
   final String? error;
 
+  /// Partial text accumulated while streaming the explanation from the AI.
+  /// Non-null only while a streaming response is in flight.
+  final String? streamingText;
+
   /// Full multi-turn conversation thread for the active follow-up session.
   final List<ChatMessage> conversationHistory;
 
@@ -43,6 +47,7 @@ class HighlightsState {
     this.isExplaining = false,
     this.lastExplanation,
     this.error,
+    this.streamingText,
     this.conversationHistory = const [],
     this.isFollowingUp = false,
   });
@@ -52,6 +57,8 @@ class HighlightsState {
     bool? isExplaining,
     HighlightExplanation? lastExplanation,
     String? error,
+    String? streamingText,
+    bool clearStreamingText = false,
     List<ChatMessage>? conversationHistory,
     bool? isFollowingUp,
   }) {
@@ -60,6 +67,7 @@ class HighlightsState {
       isExplaining: isExplaining ?? this.isExplaining,
       lastExplanation: lastExplanation ?? this.lastExplanation,
       error: error ?? this.error,
+      streamingText: clearStreamingText ? null : (streamingText ?? this.streamingText),
       conversationHistory: conversationHistory ?? this.conversationHistory,
       isFollowingUp: isFollowingUp ?? this.isFollowingUp,
     );
@@ -107,7 +115,12 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       return null;
     }
 
-    state = state.copyWith(isExplaining: true, error: null, conversationHistory: []);
+    state = state.copyWith(
+      isExplaining: true,
+      error: null,
+      conversationHistory: [],
+      streamingText: '',
+    );
 
     final cleanedText = TextNormalizer.clean(selectedText);
 
@@ -125,7 +138,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     if (explanation == null) {
       final prompt = _buildPrompt(cleanedText);
       try {
-        final raw = await _ref.read(chatClientProvider).completeChat(
+        final stream = await _ref.read(chatClientProvider).streamChat(
               modelId: modelId,
               providerId: provider.id,
               messages: [
@@ -133,6 +146,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
               ],
               maxTokens: 800,
             );
+        final raw = await _collectStream(stream);
         explanation = parseExplanation(raw);
       } on DioException catch (e) {
         if (e.response?.statusCode == 429) {
@@ -149,25 +163,26 @@ class HighlightsController extends StateNotifier<HighlightsState> {
             if (retry != null) {
               explanation = retry;
             } else {
-              state = state.copyWith(isExplaining: false, error: 'Rate-limited and no fallback succeeded.');
+              state = state.copyWith(isExplaining: false, error: 'Rate-limited and no fallback succeeded.', clearStreamingText: true);
               return null;
             }
           } else {
-            state = state.copyWith(isExplaining: false, error: 'Rate limit exceeded. No fallback model available.');
+            state = state.copyWith(isExplaining: false, error: 'Rate limit exceeded. No fallback model available.', clearStreamingText: true);
             return null;
           }
         } else {
-          state = state.copyWith(isExplaining: false, error: '$e');
+          state = state.copyWith(isExplaining: false, error: '$e', clearStreamingText: true);
           return null;
         }
       } catch (e) {
-        state = state.copyWith(isExplaining: false, error: '$e');
+        state = state.copyWith(isExplaining: false, error: '$e', clearStreamingText: true);
         return null;
       }
       if (explanation == null) {
         state = state.copyWith(
           isExplaining: false,
           error: 'The model returned an unparseable response.',
+          clearStreamingText: true,
         );
         return null;
       }
@@ -180,6 +195,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         ChatMessage(role: 'system', content: _buildFollowUpSystemContext(cleanedText, explanation)),
         ChatMessage(role: 'assistant', content: assistantContent),
       ],
+      clearStreamingText: true,
     );
 
     final highlight = HighlightModel(
@@ -219,23 +235,25 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       return;
     }
 
-    state = state.copyWith(isExplaining: true, error: null);
+    state = state.copyWith(isExplaining: true, error: null, streamingText: '');
 
     final cleanedText = TextNormalizer.clean(selectedText);
     final prompt = _buildPrompt(cleanedText);
 
     try {
-      final raw = await _ref.read(chatClientProvider).completeChat(
+      final stream = await _ref.read(chatClientProvider).streamChat(
             modelId: modelId,
             providerId: provider.id,
             messages: [AIMessage(role: 'system', content: prompt)],
             maxTokens: 800,
           );
+      final raw = await _collectStream(stream);
       final explanation = parseExplanation(raw);
       if (explanation == null) {
         state = state.copyWith(
           isExplaining: false,
           error: 'The model returned an unparseable response.',
+          clearStreamingText: true,
         );
         return;
       }
@@ -248,9 +266,10 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         ],
         isExplaining: false,
         lastExplanation: explanation,
+        clearStreamingText: true,
       );
     } catch (e) {
-      state = state.copyWith(isExplaining: false, error: '$e');
+      state = state.copyWith(isExplaining: false, error: '$e', clearStreamingText: true);
     }
   }
 
@@ -272,20 +291,23 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       conversationHistory: updatedHistory,
       isFollowingUp: true,
       error: null,
+      streamingText: '',
     );
 
     try {
-      final raw = await _ref.read(chatClientProvider).completeChat(
+      final stream = await _ref.read(chatClientProvider).streamChat(
             modelId: modelId,
             providerId: provider.id,
             messages: [for (final m in updatedHistory) m.toAiMessage()],
             maxTokens: 800,
           );
+      final raw = await _collectStream(stream);
 
       final aiMessage = ChatMessage(role: 'assistant', content: raw.trim());
       state = state.copyWith(
         conversationHistory: [...updatedHistory, aiMessage],
         isFollowingUp: false,
+        clearStreamingText: true,
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
@@ -304,6 +326,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
             state = state.copyWith(
               conversationHistory: [...state.conversationHistory, aiMessage],
               isFollowingUp: false,
+              clearStreamingText: true,
             );
             return;
           }
@@ -311,12 +334,13 @@ class HighlightsController extends StateNotifier<HighlightsState> {
         state = state.copyWith(
           isFollowingUp: false,
           error: 'Rate-limited. Try again shortly.',
+          clearStreamingText: true,
         );
       } else {
-        state = state.copyWith(isFollowingUp: false, error: '$e');
+        state = state.copyWith(isFollowingUp: false, error: '$e', clearStreamingText: true);
       }
     } catch (e) {
-      state = state.copyWith(isFollowingUp: false, error: '$e');
+      state = state.copyWith(isFollowingUp: false, error: '$e', clearStreamingText: true);
     }
   }
 
@@ -351,6 +375,17 @@ class HighlightsController extends StateNotifier<HighlightsState> {
   /// Clears the active conversation thread.
   void clearConversation() {
     state = state.copyWith(conversationHistory: []);
+  }
+
+  /// Collects a streaming response into a single string, updating
+  /// `streamingText` in state so the UI can render tokens progressively.
+  Future<String> _collectStream(Stream<String> stream) async {
+    final buffer = StringBuffer();
+    await for (final token in stream) {
+      buffer.write(token);
+      state = state.copyWith(streamingText: buffer.toString());
+    }
+    return buffer.toString();
   }
 
   // ─── Prompt & Parser ──────────────────────────────────────────────

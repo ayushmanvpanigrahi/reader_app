@@ -208,10 +208,6 @@ class _HighlightExplanationSheetState
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final highlightsState = ref.watch(highlightsControllerProvider);
-    final isExplaining = highlightsState.isExplaining;
-    final conversation = highlightsState.conversationHistory;
-    final chatMessages =
-        conversation.where((m) => m.role != 'system').toList();
 
     return SafeArea(
       child: Container(
@@ -270,115 +266,7 @@ class _HighlightExplanationSheetState
 
             // Scrollable content area
             Expanded(
-              child: isExplaining && _explanation == null
-                  ? _LoadingState(status: _status)
-                  : _failed
-                      ? _ErrorState(
-                          message: highlightsState.error,
-                          onRetry: () {
-                            setState(() => _failed = false);
-                            _explain();
-                          },
-                        )
-                      : _explanation == null
-                          ? _LoadingState(status: _status)
-                          : CustomScrollView(
-                              controller: _scrollController,
-                              physics: const BouncingScrollPhysics(),
-                              slivers: [
-                                // 5 Explanation Cards
-                                _sliverSectionCard(
-                                  icon: Icons.lightbulb_outline_rounded,
-                                  title: 'Simple Meaning',
-                                  body: _explanation!.simpleMeaning,
-                                  accent: isDark
-                                      ? AppColors.darkPrimary
-                                      : AppColors.lightPrimary,
-                                  isDark: isDark,
-                                ),
-                                _sliverSpacer(),
-                                _sliverSectionCard(
-                                  icon: Icons.menu_book_outlined,
-                                  title: 'Author\'s Context',
-                                  body: _explanation!.authorContext,
-                                  accent: isDark
-                                      ? AppColors.darkSuccess
-                                      : AppColors.lightSuccess,
-                                  isDark: isDark,
-                                ),
-                                _sliverSpacer(),
-                                _sliverSectionCard(
-                                  icon: Icons.psychology_rounded,
-                                  title: 'Reflect',
-                                  body: _explanation!.reflectionQuestion,
-                                  accent: isDark
-                                      ? AppColors.darkWarning
-                                      : AppColors.lightWarning,
-                                  isDark: isDark,
-                                ),
-                                _sliverSpacer(),
-                                _sliverSectionCard(
-                                  icon: Icons.auto_awesome_outlined,
-                                  title: 'Analogy',
-                                  body: _explanation!.analogy,
-                                  accent: isDark
-                                      ? const Color(0xFFB39DDB)
-                                      : const Color(0xFF7E57C2),
-                                  isDark: isDark,
-                                ),
-                                _sliverSpacer(),
-                                _sliverSectionCard(
-                                  icon: Icons.star_border_rounded,
-                                  title: 'Key Takeaway',
-                                  body: _explanation!.takeaway,
-                                  accent: isDark
-                                      ? AppColors.darkPrimary
-                                      : AppColors.lightPrimary,
-                                  isDark: isDark,
-                                ),
-
-                                // Divider
-                                const SliverToBoxAdapter(
-                                    child: SizedBox(height: 16)),
-                                SliverToBoxAdapter(
-                                  child: _divider(isDark),
-                                ),
-
-                                // Quick suggestion chips
-                                SliverToBoxAdapter(
-                                  child: _quickChipsWrap(isDark),
-                                ),
-
-                                // Chat messages
-                                if (chatMessages.isNotEmpty)
-                                  SliverList(
-                                    delegate: SliverChildBuilderDelegate(
-                                      (_, index) {
-                                        final msg = chatMessages[index];
-                                        return _ChatBubble(
-                                          role: msg.role,
-                                          content: msg.content,
-                                          isDark: isDark,
-                                        );
-                                      },
-                                      childCount: chatMessages.length,
-                                    ),
-                                  ),
-
-                                // Typing indicator
-                                if (highlightsState.isFollowingUp)
-                                  const SliverToBoxAdapter(
-                                    child: Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 8),
-                                      child: _TypingIndicator(),
-                                    ),
-                                  ),
-
-                                const SliverToBoxAdapter(
-                                    child: SizedBox(height: 12)),
-                              ],
-                            ),
+              child: _buildContentArea(highlightsState, isDark),
             ),
 
             // Chat input bar (fixed at bottom)
@@ -480,6 +368,112 @@ class _HighlightExplanationSheetState
           );
         }).toList(),
       ),
+    );
+  }
+
+  Widget _buildContentArea(HighlightsState highlightsState, bool isDark) {
+    final isExplaining = highlightsState.isExplaining;
+    final streamingText = highlightsState.streamingText;
+    final conversation = highlightsState.conversationHistory;
+    final chatMessages =
+        conversation.where((m) => m.role != 'system').toList();
+
+    // Streaming in progress — show live text as it arrives.
+    if (isExplaining && streamingText != null && streamingText.isNotEmpty && _explanation == null) {
+      return _StreamingState(text: streamingText, isDark: isDark);
+    }
+
+    // Still waiting (e.g. RAG path).
+    if (isExplaining && _explanation == null) {
+      return _LoadingState(status: _status);
+    }
+
+    // Error.
+    if (_failed) {
+      return _ErrorState(
+        message: highlightsState.error,
+        onRetry: () {
+          setState(() => _failed = false);
+          _explain();
+        },
+      );
+    }
+
+    // No explanation yet.
+    if (_explanation == null) {
+      return _LoadingState(status: _status);
+    }
+
+    // Full explanation + follow-up chat.
+    return CustomScrollView(
+      controller: _scrollController,
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        _sliverSectionCard(
+          icon: Icons.lightbulb_outline_rounded,
+          title: 'Simple Meaning',
+          body: _explanation!.simpleMeaning,
+          accent: isDark ? AppColors.darkPrimary : AppColors.lightPrimary,
+          isDark: isDark,
+        ),
+        _sliverSpacer(),
+        _sliverSectionCard(
+          icon: Icons.menu_book_outlined,
+          title: 'Author\'s Context',
+          body: _explanation!.authorContext,
+          accent: isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
+          isDark: isDark,
+        ),
+        _sliverSpacer(),
+        _sliverSectionCard(
+          icon: Icons.psychology_rounded,
+          title: 'Reflect',
+          body: _explanation!.reflectionQuestion,
+          accent: isDark ? AppColors.darkWarning : AppColors.lightWarning,
+          isDark: isDark,
+        ),
+        _sliverSpacer(),
+        _sliverSectionCard(
+          icon: Icons.auto_awesome_outlined,
+          title: 'Analogy',
+          body: _explanation!.analogy,
+          accent: isDark ? const Color(0xFFB39DDB) : const Color(0xFF7E57C2),
+          isDark: isDark,
+        ),
+        _sliverSpacer(),
+        _sliverSectionCard(
+          icon: Icons.star_border_rounded,
+          title: 'Key Takeaway',
+          body: _explanation!.takeaway,
+          accent: isDark ? AppColors.darkPrimary : AppColors.lightPrimary,
+          isDark: isDark,
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        SliverToBoxAdapter(child: _divider(isDark)),
+        SliverToBoxAdapter(child: _quickChipsWrap(isDark)),
+        if (chatMessages.isNotEmpty)
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, index) {
+                final msg = chatMessages[index];
+                return _ChatBubble(
+                  role: msg.role,
+                  content: msg.content,
+                  isDark: isDark,
+                );
+              },
+              childCount: chatMessages.length,
+            ),
+          ),
+        if (highlightsState.isFollowingUp)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: _TypingIndicator(),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+      ],
     );
   }
 }
@@ -1031,6 +1025,75 @@ class _LoadingState extends StatelessWidget {
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: isDark ? AppColors.darkInk : AppColors.lightInk,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Streaming State ──────────────────────────────────────────────
+
+class _StreamingState extends StatelessWidget {
+  final String text;
+  final bool isDark;
+
+  const _StreamingState({required this.text, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 16, color: primary),
+              const SizedBox(width: 8),
+              Text(
+                'AI is writing...',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(primary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: NeumorphicDecorations.boxDecoration(
+                context: context,
+                shape: NeumorphicShape.embossed,
+                borderRadius: 14,
+                depth: 2.5,
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.6,
+                    color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                  ),
+                ),
               ),
             ),
           ),

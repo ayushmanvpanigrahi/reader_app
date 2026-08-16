@@ -240,6 +240,7 @@ class ChatClient {
     required List<AIMessage> messages,
     double temperature = 0.7,
     String? systemPrompt,
+    int? maxTokens,
   }) async {
     final response = await _dio.post<ResponseBody>(
       '$_baseUrl/chat/completions',
@@ -248,6 +249,7 @@ class ChatClient {
         'stream': true,
         'temperature': temperature,
         'stream_options': {'include_usage': true},
+        'max_tokens':? maxTokens,
         'messages': [
           if (systemPrompt != null && systemPrompt.isNotEmpty)
             {'role': 'system', 'content': systemPrompt},
