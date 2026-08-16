@@ -27,6 +27,7 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
   Timer? _progressDebounce;
   int? _pendingPage;
   int? _pendingTotalPages;
+  bool _isInitialLoad = true;
 
   @override
   void initState() {
@@ -80,9 +81,9 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     _progressDebounce?.cancel();
     final page = _pendingPage;
     final totalPages = _pendingTotalPages;
-    if (page == null || totalPages == null) return;
     _pendingPage = null;
     _pendingTotalPages = null;
+    if (page == null || totalPages == null || totalPages <= 0) return;
     final progress = totalPages > 0 ? (page / totalPages) : 0.0;
     ref.read(libraryControllerProvider.notifier).updateBookProgress(
           bookId: widget.book.id,
@@ -119,8 +120,15 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
       viewerWidget = PdfViewer.file(
         widget.book.filePath,
         controller: _pdfController,
+        // Resume directly at the saved page so the engine positions itself on
+        // load; no post-open jump is needed and the first page cannot be written
+        // over the saved progress.
+        initialPageNumber: widget.book.currentPage < 1 ? 1 : widget.book.currentPage,
         params: PdfViewerParams(
           margin: 8,
+          scrollPhysics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           textSelectionParams: const PdfTextSelectionParams(
             enabled: true,
             showContextMenuAutomatically: true,
@@ -138,17 +146,16 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
             );
           },
           onDocumentChanged: (document) {
-
             final pages = document?.pages.length ?? 1;
             controller.onDocumentLoaded(pages, widget.book.currentPage);
-            if (widget.book.currentPage > 1) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _goToPage(widget.book.currentPage);
-              });
-            }
+          },
+          onViewerReady: (document, controller) {
+            _isInitialLoad = false;
           },
           onPageChanged: (pageNumber) {
-            if (pageNumber != null) {
+            // Ignore the events fired while the engine positions itself on the
+            // initial page so a stale page 1 can never overwrite saved progress.
+            if (pageNumber != null && !_isInitialLoad) {
               _onPageChanged(pageNumber, state.totalPages);
             }
           },

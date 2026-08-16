@@ -27,6 +27,7 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
   late final EpubController _epubController;
   Timer? _progressDebounce;
   double? _pendingProgress;
+  bool _resumeJumpIssued = false;
 
   @override
   void initState() {
@@ -61,8 +62,9 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
   void _flushProgress() {
     _progressDebounce?.cancel();
     final progress = _pendingProgress;
-    if (progress == null) return;
     _pendingProgress = null;
+    // Never persist 0 over a previously saved position.
+    if (progress == null || progress <= 0.0) return;
     ref.read(libraryControllerProvider.notifier).updateBookProgress(
           bookId: widget.book.id,
           currentPage: (progress * widget.book.totalPages).round().clamp(1, widget.book.totalPages),
@@ -174,6 +176,15 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                       epubController: _epubController,
                       epubSource: EpubSource.fromData(
                           io.File(widget.book.filePath).readAsBytesSync()),
+                      onLocationLoaded: () {
+                        // Resume at the saved position as soon as the book's
+                        // locations are generated, before any page sync fires.
+                        if (!_resumeJumpIssued && widget.book.progress > 0.01) {
+                          _resumeJumpIssued = true;
+                          _epubController
+                              .toProgressPercentage(widget.book.progress.clamp(0.0, 1.0));
+                        }
+                      },
                       onChaptersLoaded: (chapters) {
 
                         final items = chapters.map((c) {
@@ -187,6 +198,14 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                       },
                       onRelocated: (location) {
                         final progress = location.progress;
+                        if (_resumeJumpIssued) {
+                          // Ignore the initial ~0 progress report and wait until
+                          // we land at (or near) the restored position.
+                          if (progress < widget.book.progress * 0.5) return;
+                          _resumeJumpIssued = false;
+                        } else if (widget.book.progress > 0.01) {
+                          return;
+                        }
                         _syncProgress(progress);
                       },
                     )
@@ -361,6 +380,9 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
     Color textColor,
   ) {
     return PageView(
+      controller: PageController(
+        initialPage: (widget.book.progress * 5).round().clamp(0, 4),
+      ),
       onPageChanged: (page) {
         final prog = (page + 1) / 5.0;
         _syncProgress(prog);
