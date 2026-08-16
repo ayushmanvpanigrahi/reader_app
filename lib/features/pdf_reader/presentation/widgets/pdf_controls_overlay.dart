@@ -217,7 +217,7 @@ class PdfControlsOverlay extends StatelessWidget {
                 _buildModeOption(
                   ctx,
                   label: 'Night Comfort',
-                  subtitle: 'Best for illustrated & photo books',
+                  subtitle: 'Illustrated & photo books',
                   badge: 'Natural Photos',
                   mode: PdfReadingMode.nightComfort,
                   bgColor: const Color(0xFF282420),
@@ -227,7 +227,7 @@ class PdfControlsOverlay extends StatelessWidget {
                 _buildModeOption(
                   ctx,
                   label: 'E-Ink OLED',
-                  subtitle: 'Best for text-only novels',
+                  subtitle: 'Text-only novels',
                   badge: 'True Black',
                   mode: PdfReadingMode.oledDark,
                   bgColor: const Color(0xFF000000),
@@ -260,8 +260,8 @@ class PdfControlsOverlay extends StatelessWidget {
           Navigator.pop(context);
         },
         child: Container(
-          height: 80,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          height: 94,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -295,17 +295,17 @@ class PdfControlsOverlay extends StatelessWidget {
                 subtitle,
                 style: TextStyle(
                   color: textColor.withValues(alpha: 0.7),
-                  fontSize: 9,
-                  height: 1.2,
+                  fontSize: 9.5,
+                  height: 1.15,
                 ),
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               if (badge != null) ...[
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                   decoration: BoxDecoration(
                     color: textColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
