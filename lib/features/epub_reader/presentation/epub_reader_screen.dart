@@ -73,6 +73,13 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
           ref
               .read(epubReaderControllerProvider(widget.book.id).notifier)
               .setCurrentChapter(chapter.title);
+          if (widget.book.filePath.isNotEmpty && io.File(widget.book.filePath).existsSync()) {
+            try {
+              _epubController.display(cfi: chapter.href);
+            } catch (_) {
+              // Viewer not loaded yet; title is still tracked for the TOC.
+            }
+          }
           Navigator.pop(ctx);
         },
       ),
@@ -106,11 +113,14 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
     final bookmarksController = ref.read(bookmarksControllerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Stable bookmark key: chapter title when the viewer reports one, else the
+    // current page — otherwise currentChapterTitle is null during reading and
+    // every tap would re-add a duplicate 'Current Chapter' bookmark.
+    final bookmarkKey = state.currentChapterTitle ??
+        'Page ${(state.progress * widget.book.totalPages).round().clamp(1, widget.book.totalPages)}';
+
     final isBookmarked = bookmarksState.bookmarks.any(
-      (b) =>
-          b.bookId == widget.book.id &&
-          state.currentChapterTitle != null &&
-          b.chapterTitle == state.currentChapterTitle,
+      (b) => b.bookId == widget.book.id && b.chapterTitle == bookmarkKey,
     );
 
     final fileExists = widget.book.filePath.isNotEmpty && io.File(widget.book.filePath).existsSync();
@@ -250,19 +260,19 @@ class _EpubReaderScreenState extends ConsumerState<EpubReaderScreen> {
                         tooltip: 'Bookmark',
                         onPressed: () {
                           if (isBookmarked) {
-                            final bm = bookmarksState.bookmarks.firstWhere(
-                              (b) =>
-                                  b.bookId == widget.book.id &&
-                                  b.chapterTitle == state.currentChapterTitle,
+                            final matches = bookmarksState.bookmarks.where(
+                              (b) => b.bookId == widget.book.id && b.chapterTitle == bookmarkKey,
                             );
-                            bookmarksController.removeBookmark(bm.id);
+                            if (matches.isNotEmpty) {
+                              bookmarksController.removeBookmark(matches.first.id);
+                            }
                           } else {
                             bookmarksController.addBookmark(
                               bookId: widget.book.id,
                               bookTitle: widget.book.title,
                               format: widget.book.format,
                               pageNumber: (state.progress * widget.book.totalPages).round(),
-                              chapterTitle: state.currentChapterTitle ?? 'Current Chapter',
+                              chapterTitle: bookmarkKey,
                             );
                           }
                         },

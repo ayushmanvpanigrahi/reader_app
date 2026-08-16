@@ -26,9 +26,24 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  bool _stickToBottom = true;
+  int _lastMessageCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    _stickToBottom = position.pixels >= position.maxScrollExtent - 48;
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -198,12 +213,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (!_scrollController.hasClients || !_stickToBottom) return;
+      final newMessage = chat.messages.length != _lastMessageCount;
+      _lastMessageCount = chat.messages.length;
+      final target = _scrollController.position.maxScrollExtent;
+      if (newMessage) {
+        // New message arrived — smooth glide down.
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          target,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
+      } else {
+        // Streaming token update — snap without fighting a running animation.
+        _scrollController.jumpTo(target);
       }
     });
 
@@ -568,7 +591,7 @@ class _RagMetaFooter extends StatelessWidget {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final bool isDark;
   final bool showStreamingCursor;
@@ -580,7 +603,23 @@ class _MessageBubble extends StatelessWidget {
   });
 
   @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  final _linkRecognizers = RecognizerRegistry();
+
+  @override
+  void dispose() {
+    _linkRecognizers.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isDark = widget.isDark;
+    final showStreamingCursor = widget.showStreamingCursor;
     final isUser = message.role == ChatRole.user;
     final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
 
@@ -624,6 +663,7 @@ class _MessageBubble extends StatelessWidget {
                               : Colors.white)
                           : (isDark ? AppColors.darkInk : AppColors.lightInk),
                     ),
+                    recognizers: _linkRecognizers,
                   ),
                   if (showStreamingCursor)
                     WidgetSpan(

@@ -116,7 +116,9 @@ class HighlightsController extends StateNotifier<HighlightsState> {
                 role: ModelRole.chat,
               );
           if (switched != null) {
-            final retry = await _retryExplain(provider.id, prompt);
+            final currentProviderId =
+                _ref.read(activeProviderProvider).value?.provider?.id ?? provider.id;
+            final retry = await _retryExplain(currentProviderId, prompt);
             if (retry != null) {
               explanation = retry;
             } else {

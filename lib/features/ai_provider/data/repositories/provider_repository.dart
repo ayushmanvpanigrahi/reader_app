@@ -67,22 +67,29 @@ class ProviderRepository {
 
   // ---- Active provider & model selections ----
 
-  String? activeProviderId() => _active.get('active_provider_id');
+  String? activeProviderId() => _nonEmpty(_active.get('active_provider_id'));
 
   Future<void> setActiveProviderId(String? id) async {
     await _active.put('active_provider_id', id ?? '');
   }
 
-  String? chatModelId() => _active.get('chat_model_id');
+  String? chatModelId() => _nonEmpty(_active.get('chat_model_id'));
 
   Future<void> setChatModelId(String? id) async {
     await _active.put('chat_model_id', id ?? '');
   }
 
-  String? embeddingModelId() => _active.get('embedding_model_id');
+  String? embeddingModelId() => _nonEmpty(_active.get('embedding_model_id'));
 
   Future<void> setEmbeddingModelId(String? id) async {
     await _active.put('embedding_model_id', id ?? '');
+  }
+
+  /// Hive stores '' for null selections; expose those as null so callers can
+  /// fall back to the provider's default model.
+  String? _nonEmpty(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return value;
   }
 
   // ---- Fallback pools (ordered model ids, any provider) ----

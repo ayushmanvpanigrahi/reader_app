@@ -117,6 +117,10 @@ class ProviderRegistry:
         if not healthy:
             return []
         healthy.sort(key=lambda p: (0 if p.id == preferred_id else 1, p.priority, p.name))
+        if preferred_id and any(p.id == preferred_id for p in healthy):
+            # User explicitly picked a provider — respect it instead of
+            # rotating it to the back via the failover cursor.
+            return healthy
         cursor = self._cursor.get(user_id, 0)
         rotated = healthy[cursor:] + healthy[:cursor]
         self._cursor[user_id] = (cursor + 1) % len(healthy)

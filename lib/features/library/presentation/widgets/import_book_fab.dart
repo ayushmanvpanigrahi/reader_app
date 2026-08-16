@@ -37,13 +37,6 @@ class ImportBookFab extends ConsumerWidget {
               backgroundColor: isDark ? AppColors.darkCard : AppColors.lightPaper,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              action: SnackBarAction(
-                label: 'Read Now',
-                textColor: isDark ? AppColors.darkPrimary : AppColors.lightPrimary,
-                onPressed: () {
-                  onBookImported?.call(importedBook);
-                },
-              ),
             ),
           );
 

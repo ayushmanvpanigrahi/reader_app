@@ -177,10 +177,12 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
             isBookmarked: isBookmarked,
             onToggleBookmark: () {
               if (isBookmarked) {
-                final bm = bookmarksState.bookmarks.firstWhere(
+                final matches = bookmarksState.bookmarks.where(
                   (b) => b.bookId == widget.book.id && b.pageNumber == state.currentPage,
                 );
-                bookmarksController.removeBookmark(bm.id);
+                if (matches.isNotEmpty) {
+                  bookmarksController.removeBookmark(matches.first.id);
+                }
               } else {
                 bookmarksController.addBookmark(
                   bookId: widget.book.id,

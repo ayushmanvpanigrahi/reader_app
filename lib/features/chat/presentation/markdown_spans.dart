@@ -16,15 +16,16 @@ class MarkdownSpans {
     String text, {
     required TextStyle base,
     Color? accent,
+    RecognizerRegistry? recognizers,
   }) {
     final styles = _Styles(
       base: base,
       accent: accent ?? (base.color ?? Colors.blueGrey),
     );
-    return _blocks(text, styles);
+    return _blocks(text, styles, recognizers);
   }
 
-  static List<InlineSpan> _blocks(String text, _Styles s) {
+  static List<InlineSpan> _blocks(String text, _Styles s, RecognizerRegistry? recognizers) {
     final lines = text.split('\n');
     final spans = <InlineSpan>[];
     for (var i = 0; i < lines.length; i++) {
@@ -49,30 +50,35 @@ class MarkdownSpans {
 
       final quoteMatch = RegExp(r'^>\s?(.*)$').firstMatch(trimmed);
       if (quoteMatch != null) {
-        spans.addAll(_inline('▎ ${quoteMatch.group(1) ?? ''}', s, s.quoteStyle));
+        spans.addAll(_inline('▎ ${quoteMatch.group(1) ?? ''}', s, s.quoteStyle, recognizers));
         continue;
       }
 
       final bulletMatch = RegExp(r'^[-*•]\s+(.*)$').firstMatch(trimmed);
       if (bulletMatch != null) {
         spans.add(TextSpan(text: '   •  ', style: s.bullet));
-        spans.addAll(_inline(bulletMatch.group(1) ?? '', s));
+        spans.addAll(_inline(bulletMatch.group(1) ?? '', s, null, recognizers));
         continue;
       }
 
       final numMatch = RegExp(r'^(\d+)[.)]\s+(.*)$').firstMatch(trimmed);
       if (numMatch != null) {
         spans.add(TextSpan(text: '  ${numMatch.group(1)}.  ', style: s.bullet));
-        spans.addAll(_inline(numMatch.group(2) ?? '', s));
+        spans.addAll(_inline(numMatch.group(2) ?? '', s, null, recognizers));
         continue;
       }
 
-      spans.addAll(_inline(line, s));
+      spans.addAll(_inline(line, s, null, recognizers));
     }
     return spans;
   }
 
-  static List<InlineSpan> _inline(String text, _Styles s, [TextStyle? baseOverride]) {
+  static List<InlineSpan> _inline(
+    String text,
+    _Styles s, [
+    TextStyle? baseOverride,
+    RecognizerRegistry? recognizers,
+  ]) {
     final result = <InlineSpan>[];
     final buf = StringBuffer();
     var i = 0;
@@ -122,7 +128,7 @@ class MarkdownSpans {
           result.add(TextSpan(
             text: link.group(1),
             style: s.link,
-            recognizer: _launchRecognizer(link.group(2)!),
+            recognizer: _launchRecognizer(link.group(2)!, recognizers),
           ));
           i += link.group(0)!.length;
           continue;
@@ -158,7 +164,8 @@ class MarkdownSpans {
     return result;
   }
 
-  static TapGestureRecognizer _launchRecognizer(String rawUrl) {
+  static TapGestureRecognizer _launchRecognizer(String rawUrl, RecognizerRegistry? registry) {
+    if (registry != null) return registry.register(rawUrl);
     return TapGestureRecognizer()..onTap = () => _openUrl(rawUrl);
   }
 
@@ -174,6 +181,31 @@ class MarkdownSpans {
     } catch (_) {
       // Never crash the chat over a bad link.
     }
+  }
+}
+
+/// Owns the [TapGestureRecognizer]s attached to link [TextSpan]s so they can
+/// be disposed when the owning widget is torn down. Link recognizers are
+/// cached per URL, which also stops streaming rebuilds from allocating a new
+/// recognizer (and a new arena listener) for every token.
+class RecognizerRegistry {
+  final Map<String, TapGestureRecognizer> _byUrl = {};
+
+  TapGestureRecognizer? get(String rawUrl) => _byUrl[rawUrl];
+
+  TapGestureRecognizer register(String rawUrl) {
+    final existing = _byUrl[rawUrl];
+    if (existing != null) return existing;
+    final recognizer = TapGestureRecognizer()..onTap = () => MarkdownSpans._openUrl(rawUrl);
+    _byUrl[rawUrl] = recognizer;
+    return recognizer;
+  }
+
+  void dispose() {
+    for (final recognizer in _byUrl.values) {
+      recognizer.dispose();
+    }
+    _byUrl.clear();
   }
 }
 

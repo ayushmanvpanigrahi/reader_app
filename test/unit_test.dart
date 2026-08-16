@@ -153,14 +153,14 @@ void main() {
 
   group('AppColors Tests', () {
     test('Strict AppColors constants have correct values', () {
-      expect(AppColors.primary, const Color(0xFFC2703D));
-      expect(AppColors.lightStage, const Color(0xFFF0EEEB));
-      expect(AppColors.darkStage, const Color(0xFF1F1B18));
-      expect(AppColors.lightPaper, const Color(0xFFFDFAF4));
-      expect(AppColors.darkPaper, const Color(0xFF2B2723));
-      expect(AppColors.darkCard, const Color(0xFF322D28));
-      expect(AppColors.lightPrimary, const Color(0xFFE57C20));
-      expect(AppColors.darkPrimary, const Color(0xFFEE9C21));
+      expect(AppColors.primary, const Color(0xFF5B56BC));
+      expect(AppColors.lightStage, const Color(0xFFF5F5FA));
+      expect(AppColors.darkStage, const Color(0xFF121317));
+      expect(AppColors.lightPaper, const Color(0xFFFFFFFF));
+      expect(AppColors.darkPaper, const Color(0xFF1E2026));
+      expect(AppColors.darkCard, const Color(0xFF3E4148));
+      expect(AppColors.lightPrimary, const Color(0xFF5B56BC));
+      expect(AppColors.darkPrimary, const Color(0xFF8B8DF7));
     });
   });
 
