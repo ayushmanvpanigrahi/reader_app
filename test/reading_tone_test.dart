@@ -75,29 +75,26 @@ void main() {
       expect(mid[0], closeTo(126, epsilon));
     });
 
-    test('e-ink oled dims white without inverting — images stay natural', () {
-      // White page should dim, not flip to black (no luminance invert).
-      final white = applyColorMatrix(kOledDarkToneMatrix, [255, 255, 255, 255]);
-      for (var ch = 0; ch < 3; ch++) {
-        expect(white[ch], closeTo(148.5, epsilon));
-      }
-      // Black text stays black (offset pushes toward 0, clamped).
-      final black = applyColorMatrix(kOledDarkToneMatrix, [0, 0, 0, 255]);
-      for (var ch = 0; ch < 3; ch++) {
-        expect(black[ch], closeTo(0, epsilon));
-      }
+    test('e-ink oled maps white to pure black and black to pure white', () {
+      expectPixel(
+        kOledDarkToneMatrix,
+        [255, 255, 255, 255],
+        [0, 0, 0, 255],
+      );
+      expectPixel(
+        kOledDarkToneMatrix,
+        [0, 0, 0, 255],
+        [255, 255, 255, 255],
+      );
     });
 
-    test('e-ink oled preserves image colors — no grayscale conversion', () {
-      // Per-channel dimming keeps hues: red stays red, green stays green.
-      final red = applyColorMatrix(kOledDarkToneMatrix, [255, 0, 0, 255]);
-      expect(red[0], closeTo(148.5, epsilon));
-      expect(red[1], closeTo(0, epsilon));
-      expect(red[2], closeTo(0, epsilon));
+    test('e-ink oled renders saturated content as natural monochrome', () {
       final green = applyColorMatrix(kOledDarkToneMatrix, [0, 255, 0, 255]);
-      expect(green[0], closeTo(0, epsilon));
-      expect(green[1], closeTo(148.5, epsilon));
-      expect(green[2], closeTo(0, epsilon));
+      final red = applyColorMatrix(kOledDarkToneMatrix, [255, 0, 0, 255]);
+      for (final px in [green, red]) {
+        expect(px[0], closeTo(px[1], epsilon));
+        expect(px[1], closeTo(px[2], epsilon));
+      }
     });
 
     test('toneMatrixFor returns a matrix for every mode', () {

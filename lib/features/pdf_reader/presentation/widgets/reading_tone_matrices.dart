@@ -32,20 +32,20 @@ const List<double> kCharcoalToneMatrix = <double>[
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 
-/// E-Ink OLED: brightness-dim with contrast boost — no luminance inversion.
+/// E-Ink OLED: full luminance inversion (out = 255 − L) with a per-page
+/// cover-page bypass.
 ///
-/// Reduces brightness by ~30 % and drops a flat −30 offset so white pages
-/// land on a comfortable dim gray while black text stays black.  Critically,
-/// every channel is scaled equally (`0.7` × original − 30), which means
-/// coloured images simply get darker instead of flipping into negatives or
-/// losing saturation — zero blue/green artifacts.
+/// Reading pages (page 2+) get crisp white-on-black text and natural
+/// monochrome illustrations — zero blue/green artifacts.  The cover page
+/// (page 1) is rendered *without* this filter so original artwork / cover
+/// photos appear in their true colours.
 ///
-/// The pure-black scaffold behind the viewer provides the OLED-friendly dark
-/// surround; the viewer itself stays non-inverted for natural images.
+/// The bypass is implemented in `pdf_reader_screen.dart` by checking
+/// `currentPage` and choosing between the identity matrix and this one.
 const List<double> kOledDarkToneMatrix = <double>[
-  0.7, 0.0, 0.0, 0, -30,
-  0.0, 0.7, 0.0, 0, -30,
-  0.0, 0.0, 0.7, 0, -30,
+  -0.299, -0.587, -0.114, 0, 255,
+  -0.299, -0.587, -0.114, 0, 255,
+  -0.299, -0.587, -0.114, 0, 255,
   0.0, 0.0, 0.0, 1.0, 0,
 ];
 

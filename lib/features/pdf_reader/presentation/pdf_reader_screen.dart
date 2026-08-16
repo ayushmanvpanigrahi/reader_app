@@ -111,6 +111,17 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     }
   }
 
+  /// Returns `true` when the viewer is showing the cover page (page 1).
+  /// Uses the saved position as a fallback before `onPageChanged` fires so
+  /// the filter is correct from the very first frame (avoids a brief flash
+  /// of unfiltered content when reopening a book mid-way).
+  bool _isCoverPage(PdfReaderState state) {
+    final effectivePage = state.currentPage > 1
+        ? state.currentPage
+        : widget.book.currentPage;
+    return effectivePage <= 1;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pdfReaderControllerProvider(widget.book.id));
@@ -179,9 +190,15 @@ class _PdfReaderScreenState extends ConsumerState<PdfReaderScreen> {
     }
 
     // Apply the reading tone (Original / Warm Sepia / Night Charcoal /
-    // E-Ink OLED). E-Ink OLED dims content without inverting; the pure-black
-    // scaffold provides the dark surround so images keep natural colors.
-    if (state.readingMode != PdfReadingMode.standard) {
+    // E-Ink OLED).
+    //
+    // E-Ink OLED uses a per-page bypass: the cover page (page 1) is
+    // rendered without any filter so original artwork shows in true colour,
+    // while reading pages (page 2+) get the full luminance invert for true
+    // OLED black + white text + natural monochrome illustrations.
+    final bool isOledCoverBypass =
+        state.readingMode == PdfReadingMode.oledDark && _isCoverPage(state);
+    if (state.readingMode != PdfReadingMode.standard && !isOledCoverBypass) {
       viewerWidget = ColorFiltered(
         colorFilter: colorFilterFor(state.readingMode),
         child: viewerWidget,
