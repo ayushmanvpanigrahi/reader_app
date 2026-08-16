@@ -142,6 +142,23 @@ class ProviderRegistry:
                 p.last_error = ""
                 break
 
+    def failure_reasons(self, user_id: str) -> list[str]:
+        """Human-readable reasons why every configured provider is unavailable."""
+        now = time.time()
+        out: list[str] = []
+        for p in self._providers.get(user_id, []):
+            if p.healthy and not p.in_cooldown(now):
+                continue
+            if not (p.chat_model or p.embedding_model):
+                continue
+            if p.in_cooldown(now):
+                detail = p.last_error or "rate limited, cooling down"
+                remaining = max(0, int(p.cooldown_until - now))
+                out.append(f"{p.name or p.id}: {detail[:200]} (retry in {remaining}s)")
+            else:
+                out.append(f"{p.name or p.id}: {p.last_error or 'unhealthy'}")
+        return out
+
     def emit(self, user_id: str, event: dict) -> None:
         self._events.setdefault(user_id, []).append(event)
 

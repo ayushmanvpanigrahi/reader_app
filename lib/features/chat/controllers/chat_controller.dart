@@ -170,24 +170,26 @@ class ChatController extends StateNotifier<ChatState> {
         final switched = await _handleRateLimitError(assistantId, providerId, buffer);
         if (switched) return;
       }
-      final finalContent = buffer.isEmpty ? '⚠️ Failed: $e' : buffer;
+      final friendly = _friendlyDioError(e);
+      final finalContent = buffer.isEmpty ? '⚠️ Failed: $friendly' : buffer;
       state = ChatState(
         messages: [
           for (final m in state.messages)
             if (m.id == assistantId) m.copyWith(content: finalContent, isStreaming: false) else m,
         ],
-        error: buffer.isEmpty ? '$e' : null,
+        error: buffer.isEmpty ? friendly : null,
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
       );
     } catch (e) {
-      final finalContent = buffer.isEmpty ? '⚠️ Failed: $e' : buffer;
+      final friendly = e is DioException ? _friendlyDioError(e) : '$e';
+      final finalContent = buffer.isEmpty ? '⚠️ Failed: $friendly' : buffer;
       state = ChatState(
         messages: [
           for (final m in state.messages)
             if (m.id == assistantId) m.copyWith(content: finalContent, isStreaming: false) else m,
         ],
-        error: buffer.isEmpty ? '$e' : null,
+        error: buffer.isEmpty ? friendly : null,
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
       );
@@ -229,13 +231,14 @@ class ChatController extends StateNotifier<ChatState> {
       state = _patchMessage(assistantId, retryBuffer, isStreaming: false);
       return true;
     } catch (e) {
-      final finalContent = buffer.isEmpty ? '⚠️ Failed: $e' : buffer;
+      final friendly = e is DioException ? _friendlyDioError(e) : '$e';
+      final finalContent = buffer.isEmpty ? '⚠️ Failed: $friendly' : buffer;
       state = ChatState(
         messages: [
           for (final m in state.messages)
             if (m.id == assistantId) m.copyWith(content: finalContent, isStreaming: false) else m,
         ],
-        error: buffer.isEmpty ? '$e' : null,
+        error: buffer.isEmpty ? friendly : null,
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
       );
@@ -339,17 +342,18 @@ class ChatController extends StateNotifier<ChatState> {
         ragMeta: meta,
       );
     } catch (e) {
-      final finalContent = buffer.isEmpty ? '⚠️ RAG failed: $e' : buffer;
+      final friendly = e is DioException ? _friendlyDioError(e) : '$e';
+      final finalContent = buffer.isEmpty ? '⚠️ RAG failed: $friendly' : buffer;
       state = ChatState(
         messages: [
           for (final m in state.messages)
             if (m.id == assistantId) m.copyWith(content: finalContent, isStreaming: false) else m,
         ],
-        error: buffer.isEmpty ? '$e' : null,
-        notice: 'RAG failed: $e',
+        error: buffer.isEmpty ? friendly : null,
+        notice: 'RAG failed: $friendly',
         ragBookId: state.ragBookId,
         ragBookTitle: state.ragBookTitle,
-        ragMeta: meta.copyWith(statuses: [...statuses, '$e']),
+        ragMeta: meta.copyWith(statuses: [...statuses, friendly]),
       );
     }
   }
@@ -362,5 +366,30 @@ class ChatController extends StateNotifier<ChatState> {
       ],
       isStreaming: isStreaming,
     );
+  }
+
+  /// Turns a provider/gateway error into something the user can act on,
+  /// extracting the provider's own message (e.g. an invalid model name).
+  String _friendlyDioError(DioException e) {
+    final resp = e.response;
+    if (resp != null) {
+      final status = resp.statusCode;
+      String? detail;
+      final data = resp.data;
+      if (data is Map) {
+        final error = data['error'];
+        if (error is Map) detail = error['message']?.toString();
+        detail ??= data['message']?.toString() ?? data['detail']?.toString();
+      } else if (data is String && data.trim().isNotEmpty) {
+        detail = data.trim();
+      }
+      if (status == 401) {
+        return detail != null
+            ? 'API key rejected (HTTP 401): $detail'
+            : 'API key rejected (HTTP 401)';
+      }
+      return detail != null ? 'HTTP $status: $detail' : 'HTTP $status';
+    }
+    return 'Network error: ${e.message ?? e.type.name}';
   }
 }

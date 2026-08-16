@@ -30,11 +30,14 @@ class OpenAICompatibleLLM:
         temperature: float | None = None,
         fast: bool = False,
     ) -> str:
-        endpoints = (
-            provider_context.internal_chat_endpoints()
-            if fast
-            else provider_context.chat_endpoints()
-        )
+        try:
+            endpoints = (
+                provider_context.internal_chat_endpoints()
+                if fast
+                else provider_context.chat_endpoints()
+            )
+        except provider_context.ProviderUnavailableError as exc:
+            raise LLMError(str(exc)) from exc
         last_error: str | None = None
         for ep in endpoints:
             try:
@@ -67,7 +70,10 @@ class OpenAICompatibleLLM:
         on_token: Any,
         on_usage: Any,
     ) -> str:
-        endpoints = provider_context.chat_endpoints()
+        try:
+            endpoints = provider_context.chat_endpoints()
+        except provider_context.ProviderUnavailableError as exc:
+            raise LLMError(str(exc)) from exc
         last_error: str | None = None
         for ep in endpoints:
             emitted = False

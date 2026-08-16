@@ -21,6 +21,11 @@ class Endpoint:
     provider_name: str = ""
 
 
+class ProviderUnavailableError(RuntimeError):
+    """Raised when no chat provider can serve a request and no configured
+    fallback (e.g. an OpenAI key) exists. Message is user-facing."""
+
+
 def bind_request(
     *,
     user_id: str,
@@ -71,17 +76,31 @@ def chat_endpoints() -> list[Endpoint]:
 
     uid = _user_id_var.get()
     if uid:
-        candidates = get_provider_registry().chat_candidates(uid, _chat_pref_var.get())
+        registry = get_provider_registry()
+        candidates = registry.chat_candidates(uid, _chat_pref_var.get())
         if candidates:
             return [_to_endpoint(c, embedding=False) for c in candidates]
+        # Every configured provider is failed/cooling down — tell the user why
+        # instead of silently falling back to the OpenAI default.
+        reasons = registry.failure_reasons(uid)
+        if reasons:
+            raise ProviderUnavailableError(
+                "No working chat provider: " + " ".join(reasons)
+            )
 
-    return [
-        Endpoint(
-            base_url=(settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/"),
-            api_key=settings.OPENAI_API_KEY,
-            model=settings.CHAT_MODEL,
-        )
-    ]
+    # No providers configured for this user; only fall back to OpenAI if a key
+    # actually exists (a keyless call would produce a confusing 401).
+    if settings.OPENAI_API_KEY:
+        return [
+            Endpoint(
+                base_url=(settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/"),
+                api_key=settings.OPENAI_API_KEY,
+                model=settings.CHAT_MODEL,
+            )
+        ]
+    raise ProviderUnavailableError(
+        "No AI provider configured. Add one in the app (Settings > AI Provider), then retry."
+    )
 
 
 def fast_chat_endpoints() -> list[Endpoint]:
@@ -91,7 +110,13 @@ def fast_chat_endpoints() -> list[Endpoint]:
     uid = _user_id_var.get()
     if uid:
         for cfg in get_provider_registry().all(uid):
-            if cfg.chat_model == settings.FAST_CHAT_MODEL and cfg.base_url and cfg.api_key:
+            if (
+                cfg.chat_model == settings.FAST_CHAT_MODEL
+                and cfg.base_url
+                and cfg.api_key
+                and cfg.healthy
+                and not cfg.in_cooldown()
+            ):
                 return [_to_endpoint(cfg, embedding=False)]
     return []
 
@@ -99,7 +124,12 @@ def fast_chat_endpoints() -> list[Endpoint]:
 def internal_chat_endpoints() -> list[Endpoint]:
     """Preferred chain for non-visible LLM calls: fast model first (when
     configured), then the normal chat endpoints, deduplicated."""
-    merged = fast_chat_endpoints() + chat_endpoints()
+    merged = fast_chat_endpoints()
+    try:
+        merged = merged + chat_endpoints()
+    except ProviderUnavailableError:
+        if not merged:
+            raise
     seen: set[tuple[str, str]] = set()
     out: list[Endpoint] = []
     for ep in merged:
