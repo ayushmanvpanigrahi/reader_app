@@ -10,10 +10,21 @@ import '../../rag/controllers/rag_controller.dart';
 import '../../rag/data/rag_service.dart';
 import '../data/highlight_model.dart';
 import '../data/highlight_storage.dart';
+import '../data/text_normalizer.dart';
 
 final highlightStorageProvider = Provider<HighlightStorage>((ref) {
   return HighlightStorage();
 });
+
+/// A single message in a follow-up conversation thread.
+class ChatMessage {
+  final String role; // 'user' or 'assistant'
+  final String content;
+
+  const ChatMessage({required this.role, required this.content});
+
+  AIMessage toAiMessage() => AIMessage(role: role, content: content);
+}
 
 class HighlightsState {
   final List<HighlightModel> highlights;
@@ -21,11 +32,19 @@ class HighlightsState {
   final HighlightExplanation? lastExplanation;
   final String? error;
 
+  /// Full multi-turn conversation thread for the active follow-up session.
+  final List<ChatMessage> conversationHistory;
+
+  /// Whether a follow-up request is in flight.
+  final bool isFollowingUp;
+
   const HighlightsState({
     this.highlights = const [],
     this.isExplaining = false,
     this.lastExplanation,
     this.error,
+    this.conversationHistory = const [],
+    this.isFollowingUp = false,
   });
 
   HighlightsState copyWith({
@@ -33,12 +52,16 @@ class HighlightsState {
     bool? isExplaining,
     HighlightExplanation? lastExplanation,
     String? error,
+    List<ChatMessage>? conversationHistory,
+    bool? isFollowingUp,
   }) {
     return HighlightsState(
       highlights: highlights ?? this.highlights,
       isExplaining: isExplaining ?? this.isExplaining,
       lastExplanation: lastExplanation ?? this.lastExplanation,
       error: error ?? this.error,
+      conversationHistory: conversationHistory ?? this.conversationHistory,
+      isFollowingUp: isFollowingUp ?? this.isFollowingUp,
     );
   }
 }
@@ -67,6 +90,7 @@ class HighlightsController extends StateNotifier<HighlightsState> {
     return active?.chatModelId ?? '';
   }
 
+  /// Kicks off the initial 5-section explanation for a highlight.
   Future<HighlightExplanation?> explain({
     required String bookId,
     required String bookTitle,
@@ -83,7 +107,9 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       return null;
     }
 
-    state = state.copyWith(isExplaining: true, error: null);
+    state = state.copyWith(isExplaining: true, error: null, conversationHistory: []);
+
+    final cleanedText = TextNormalizer.clean(selectedText);
 
     HighlightExplanation? explanation;
     final rag = _ref.read(ragControllerProvider);
@@ -92,12 +118,12 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       explanation = await _explainWithRag(
         backendBookId: rag.backendBookIdFor(bookId)!,
         pageNumber: pageNumber,
-        selectedText: selectedText,
+        selectedText: cleanedText,
       );
     }
 
     if (explanation == null) {
-      final prompt = _buildPrompt(selectedText);
+      final prompt = _buildPrompt(cleanedText);
       try {
         final raw = await _ref.read(chatClientProvider).completeChat(
               modelId: modelId,
@@ -105,9 +131,9 @@ class HighlightsController extends StateNotifier<HighlightsState> {
               messages: [
                 AIMessage(role: 'system', content: prompt),
               ],
-              maxTokens: 600,
+              maxTokens: 800,
             );
-        explanation = _parseExplanation(raw);
+        explanation = parseExplanation(raw);
       } on DioException catch (e) {
         if (e.response?.statusCode == 429) {
           final switched = await _ref
@@ -147,12 +173,21 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       }
     }
 
+    // Seed the conversation history with the system context and assistant reply.
+    final assistantContent = _formatExplanationAsText(explanation);
+    state = state.copyWith(
+      conversationHistory: [
+        ChatMessage(role: 'system', content: _buildFollowUpSystemContext(cleanedText, explanation)),
+        ChatMessage(role: 'assistant', content: assistantContent),
+      ],
+    );
+
     final highlight = HighlightModel(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       bookId: bookId,
       bookTitle: bookTitle,
       pageNumber: pageNumber,
-      selectedText: selectedText.trim(),
+      selectedText: cleanedText,
       explanation: explanation,
       createdAt: DateTime.now(),
     );
@@ -165,6 +200,197 @@ class HighlightsController extends StateNotifier<HighlightsState> {
       lastExplanation: explanation,
     );
     return explanation;
+  }
+
+  /// Re-explain with edited/updated text, preserving conversation context.
+  Future<void> reExplain({
+    required String bookId,
+    required String bookTitle,
+    required int pageNumber,
+    required String selectedText,
+  }) async {
+    if (state.isExplaining) return;
+
+    final active = _ref.read(activeProviderProvider).value;
+    final provider = active?.provider;
+    final modelId = _configuredModelId;
+    if (provider == null || !active!.isConfigured || modelId.isEmpty) {
+      state = state.copyWith(error: 'Configure an AI provider in Settings.');
+      return;
+    }
+
+    state = state.copyWith(isExplaining: true, error: null);
+
+    final cleanedText = TextNormalizer.clean(selectedText);
+    final prompt = _buildPrompt(cleanedText);
+
+    try {
+      final raw = await _ref.read(chatClientProvider).completeChat(
+            modelId: modelId,
+            providerId: provider.id,
+            messages: [AIMessage(role: 'system', content: prompt)],
+            maxTokens: 800,
+          );
+      final explanation = parseExplanation(raw);
+      if (explanation == null) {
+        state = state.copyWith(
+          isExplaining: false,
+          error: 'The model returned an unparseable response.',
+        );
+        return;
+      }
+
+      final assistantContent = _formatExplanationAsText(explanation);
+      state = state.copyWith(
+        conversationHistory: [
+          ChatMessage(role: 'system', content: _buildFollowUpSystemContext(cleanedText, explanation)),
+          ChatMessage(role: 'assistant', content: assistantContent),
+        ],
+        isExplaining: false,
+        lastExplanation: explanation,
+      );
+    } catch (e) {
+      state = state.copyWith(isExplaining: false, error: '$e');
+    }
+  }
+
+  /// Sends a follow-up question, maintaining full conversation history.
+  Future<void> askFollowUp(String question) async {
+    if (state.isFollowingUp || question.trim().isEmpty) return;
+
+    final active = _ref.read(activeProviderProvider).value;
+    final provider = active?.provider;
+    final modelId = _configuredModelId;
+    if (provider == null || !active!.isConfigured || modelId.isEmpty) {
+      state = state.copyWith(error: 'Configure an AI provider in Settings.');
+      return;
+    }
+
+    final userMessage = ChatMessage(role: 'user', content: question.trim());
+    final updatedHistory = [...state.conversationHistory, userMessage];
+    state = state.copyWith(
+      conversationHistory: updatedHistory,
+      isFollowingUp: true,
+      error: null,
+    );
+
+    try {
+      final raw = await _ref.read(chatClientProvider).completeChat(
+            modelId: modelId,
+            providerId: provider.id,
+            messages: [for (final m in updatedHistory) m.toAiMessage()],
+            maxTokens: 800,
+          );
+
+      final aiMessage = ChatMessage(role: 'assistant', content: raw.trim());
+      state = state.copyWith(
+        conversationHistory: [...state.conversationHistory, aiMessage],
+        isFollowingUp: false,
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        final switched = await _ref
+            .read(modelSwitcherProvider.notifier)
+            .handleRateLimit(
+              exhaustedModelId: modelId,
+              role: ModelRole.chat,
+            );
+        if (switched != null) {
+          final currentProviderId =
+              _ref.read(activeProviderProvider).value?.provider?.id ?? provider.id;
+          final retryRaw = await _retryFollowUp(currentProviderId, updatedHistory);
+          if (retryRaw != null) {
+            final aiMessage = ChatMessage(role: 'assistant', content: retryRaw.trim());
+            state = state.copyWith(
+              conversationHistory: [...state.conversationHistory, aiMessage],
+              isFollowingUp: false,
+            );
+            return;
+          }
+        }
+        state = state.copyWith(
+          isFollowingUp: false,
+          error: 'Rate-limited. Try again shortly.',
+        );
+      } else {
+        state = state.copyWith(isFollowingUp: false, error: '$e');
+      }
+    } catch (e) {
+      state = state.copyWith(isFollowingUp: false, error: '$e');
+    }
+  }
+
+  Future<String?> _retryFollowUp(String providerId, List<ChatMessage> history) async {
+    try {
+      final modelId = _configuredModelId;
+      if (modelId.isEmpty) return null;
+      return await _ref.read(chatClientProvider).completeChat(
+            modelId: modelId,
+            providerId: providerId,
+            messages: [for (final m in history) m.toAiMessage()],
+            maxTokens: 800,
+          );
+    } catch (e, stack) {
+      debugPrint('[HighlightsController] _retryFollowUp failed: $e\n$stack');
+      return null;
+    }
+  }
+
+  Future<void> remove(String id) async {
+    await _storage.remove(id);
+    final highlights = await _storage.loadAll();
+    state = state.copyWith(highlights: highlights);
+  }
+
+  Future<void> clearBook(String bookId) async {
+    await _storage.clearBook(bookId);
+    final highlights = await _storage.loadAll();
+    state = state.copyWith(highlights: highlights);
+  }
+
+  /// Clears the active conversation thread.
+  void clearConversation() {
+    state = state.copyWith(conversationHistory: []);
+  }
+
+  // ─── Prompt & Parser ──────────────────────────────────────────────
+
+  String _buildPrompt(String selectedText) {
+    return 'You are a reading companion that explains a highlighted passage from a book. '
+        'Explain the following selected passage in a simple, easy-to-understand way for a learner.\n\n'
+        'Selected passage:\n"""\n$selectedText\n"""\n\n'
+        'Return your answer using EXACTLY these five labeled sections, one section per line:\n'
+        'SIMPLE_MEANING: <one-sentence plain-English meaning>\n'
+        'AUTHOR_CONTEXT: <why the author likely wrote this and the tone or intent>\n'
+        'REFLECTION_QUESTION: <one open-ended question to help the reader connect it to their own life>\n'
+        'ANALOGY: <a vivid everyday analogy that makes the idea click>\n'
+        'TAKEAWAY: <one memorable takeaway sentence>';
+  }
+
+  /// Builds a system context message that seeds the follow-up conversation
+  /// with full knowledge of the passage and the 5-part explanation.
+  String _buildFollowUpSystemContext(String passage, HighlightExplanation explanation) {
+    return 'You are a reading companion. The user selected this passage:\n'
+        '"""\n$passage\n"""\n\n'
+        'You explained it with these 5 sections:\n'
+        '- Simple Meaning: ${explanation.simpleMeaning}\n'
+        '- Author\'s Context: ${explanation.authorContext}\n'
+        '- Reflection Question: ${explanation.reflectionQuestion}\n'
+        '- Analogy: ${explanation.analogy}\n'
+        '- Key Takeaway: ${explanation.takeaway}\n\n'
+        'Now the user is asking follow-up questions. Answer helpfully, '
+        'maintaining full context of the original passage and your explanation. '
+        'Keep answers concise unless the user asks for detail.';
+  }
+
+  /// Formats the 5-part explanation into a readable string for the
+  /// conversation history.
+  String _formatExplanationAsText(HighlightExplanation e) {
+    return 'Simple Meaning: ${e.simpleMeaning}\n'
+        'Author\'s Context: ${e.authorContext}\n'
+        'Reflection: ${e.reflectionQuestion}\n'
+        'Analogy: ${e.analogy}\n'
+        'Takeaway: ${e.takeaway}';
   }
 
   Future<HighlightExplanation?> _explainWithRag({
@@ -220,53 +446,78 @@ class HighlightsController extends StateNotifier<HighlightsState> {
             messages: [
               AIMessage(role: 'system', content: prompt),
             ],
-            maxTokens: 600,
+            maxTokens: 800,
           );
-      return _parseExplanation(raw);
+      return parseExplanation(raw);
     } catch (e, stack) {
       debugPrint('[HighlightsController] _retryExplain failed: $e\n$stack');
       return null;
     }
   }
 
-  Future<void> remove(String id) async {
-    await _storage.remove(id);
-    final highlights = await _storage.loadAll();
-    state = state.copyWith(highlights: highlights);
-  }
-
-  Future<void> clearBook(String bookId) async {
-    await _storage.clearBook(bookId);
-    final highlights = await _storage.loadAll();
-    state = state.copyWith(highlights: highlights);
-  }
-
-  String _buildPrompt(String selectedText) {
-    return 'You are a reading companion that explains a highlighted passage from a book. '
-        'Explain the following selected passage in a simple, easy-to-understand way for a learner.\n\n'
-        'Selected passage:\n"""\n$selectedText\n"""\n\n'
-        'Return your answer using EXACTLY these five labeled sections, one section per line:\n'
-        'SIMPLE_MEANING: <one-sentence plain-English meaning>\n'
-        'AUTHOR_CONTEXT: <why the author likely wrote this and the tone or intent>\n'
-        'REFLECTION_QUESTION: <one open-ended question to help the reader connect it to their own life>\n'
-        'ANALOGY: <a vivid everyday analogy that makes the idea click>\n'
-        'TAKEAWAY: <one memorable takeaway sentence>';
-  }
-
-  HighlightExplanation? _parseExplanation(String raw) {
+  /// Robust multi-line parser that handles markdown prefixes (**LABEL:**),
+  /// heading-style labels (### LABEL), multi-line paragraph bodies, and
+  /// conversational fallbacks.
+  ///
+  /// Returns null only when fewer than 3 of the 5 sections are found.
+  @visibleForTesting
+  static HighlightExplanation? parseExplanation(String raw) {
     final sections = <String, String>{};
-    final lines = raw.split('\n');
-    for (final line in lines) {
-      for (final label in const [
+
+    // Normalize: strip common markdown bold/italic wrappers around labels.
+    var text = raw.replaceAll(RegExp(r'\*{1,3}'), '');
+
+    // Match patterns like:
+    //   SIMPLE_MEANING: text
+    //   SIMPLE_MEANING: text (continues on next line until next label)
+    //   ### SIMPLE_MEANING: text
+    final labelPattern = RegExp(
+      r'^(?:###?\s*)?(SIMPLE_MEANING|AUTHOR_CONTEXT|REFLECTION_QUESTION|ANALOGY|TAKEAWAY)\s*:\s*',
+      caseSensitive: false,
+      multiLine: true,
+    );
+
+    final matches = labelPattern.allMatches(text).toList();
+
+    for (var i = 0; i < matches.length; i++) {
+      final match = matches[i];
+      final label = match.group(1)!.toUpperCase();
+      final startIdx = match.end;
+
+      // The body extends from after this label to the start of the next label
+      // (or end of string).
+      final endIdx = i + 1 < matches.length ? matches[i + 1].start : text.length;
+      final body = text.substring(startIdx, endIdx).trim();
+
+      // Clean up: remove trailing "---" or "===" separators.
+      final cleaned = body
+          .replaceAll(RegExp(r'\n[-=]{3,}\s*$'), '')
+          .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+          .trim();
+
+      if (cleaned.isNotEmpty) {
+        sections[label] = cleaned;
+      }
+    }
+
+    // Fallback: if no labels matched at all, try to split the response
+    // into rough paragraphs and assign them in order.
+    if (sections.isEmpty) {
+      final labels = [
         'SIMPLE_MEANING',
         'AUTHOR_CONTEXT',
         'REFLECTION_QUESTION',
         'ANALOGY',
         'TAKEAWAY',
-      ]) {
-        if (line.trim().startsWith('$label:')) {
-          sections[label] = line.trim().substring(label.length + 1).trim();
-        }
+      ];
+      final paragraphs = text
+          .split(RegExp(r'\n{2,}'))
+          .map((p) => p.trim())
+          .where((p) => p.isNotEmpty)
+          .toList();
+
+      for (var i = 0; i < paragraphs.length && i < labels.length; i++) {
+        sections[labels[i]] = paragraphs[i];
       }
     }
 

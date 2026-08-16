@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/neumorphic_decorations.dart';
 import '../controllers/highlights_controller.dart';
 import '../data/highlight_model.dart';
+import '../data/text_normalizer.dart';
 
 Future<void> showHighlightExplanationSheet(
   BuildContext context, {
@@ -50,10 +51,48 @@ class _HighlightExplanationSheetState
   HighlightExplanation? _explanation;
   bool _failed = false;
 
+  // Editable passage
+  bool _isEditing = false;
+  late TextEditingController _editController;
+  late String _currentText;
+
+  // Follow-up chat
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _chatInputController = TextEditingController();
+
+  static const _quickChips = [
+    'Explain in simple Hindi',
+    'Give a daily life example',
+    'What is the counter-argument?',
+    'Key life lesson',
+  ];
+
   @override
   void initState() {
     super.initState();
+    _currentText = TextNormalizer.clean(widget.selectedText);
+    _editController = TextEditingController(text: _currentText);
     _explain();
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _chatInputController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _explain() async {
@@ -63,7 +102,7 @@ class _HighlightExplanationSheetState
           bookId: widget.bookId,
           bookTitle: widget.bookTitle,
           pageNumber: widget.pageNumber,
-          selectedText: widget.selectedText,
+          selectedText: _currentText,
         );
     if (!mounted) return;
     if (result == null) {
@@ -76,22 +115,60 @@ class _HighlightExplanationSheetState
     }
   }
 
+  Future<void> _reExplain() async {
+    setState(() {
+      _currentText = _editController.text.trim();
+      _isEditing = false;
+      _explanation = null;
+      _failed = false;
+    });
+    await ref
+        .read(highlightsControllerProvider.notifier)
+        .reExplain(
+          bookId: widget.bookId,
+          bookTitle: widget.bookTitle,
+          pageNumber: widget.pageNumber,
+          selectedText: _currentText,
+        );
+    if (!mounted) return;
+    final explanation = ref.read(highlightsControllerProvider).lastExplanation;
+    if (explanation != null) {
+      setState(() => _explanation = explanation);
+    } else {
+      setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _sendFollowUp(String question) async {
+    _chatInputController.clear();
+    _scrollToBottom();
+    await ref
+        .read(highlightsControllerProvider.notifier)
+        .askFollowUp(question);
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isExplaining = ref.watch(highlightsControllerProvider).isExplaining;
+    final highlightsState = ref.watch(highlightsControllerProvider);
+    final isExplaining = highlightsState.isExplaining;
+    final conversation = highlightsState.conversationHistory;
+    final chatMessages =
+        conversation.where((m) => m.role != 'system').toList();
 
     return SafeArea(
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: MediaQuery.of(context).size.height * 0.85,
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkPaper : AppColors.lightPaper,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Drag handle
             Center(
               child: Container(
                 width: 44,
@@ -103,6 +180,8 @@ class _HighlightExplanationSheetState
               ),
             ),
             const SizedBox(height: 12),
+
+            // Header
             Row(
               children: [
                 Icon(
@@ -121,8 +200,19 @@ class _HighlightExplanationSheetState
               ],
             ),
             const SizedBox(height: 8),
-            _QuoteBlock(text: widget.selectedText, isDark: isDark),
-            const SizedBox(height: 16),
+
+            // Editable passage card
+            _EditablePassageCard(
+              text: _currentText,
+              isEditing: _isEditing,
+              editController: _editController,
+              isDark: isDark,
+              onToggleEdit: () => setState(() => _isEditing = !_isEditing),
+              onReExplain: _reExplain,
+            ),
+            const SizedBox(height: 12),
+
+            // Scrollable content area
             Expanded(
               child: isExplaining && _explanation == null
                   ? const _LoadingState()
@@ -135,23 +225,231 @@ class _HighlightExplanationSheetState
                         )
                       : _explanation == null
                           ? const _LoadingState()
-                          : _ExplanationList(explanation: _explanation!, isDark: isDark),
+                          : CustomScrollView(
+                              controller: _scrollController,
+                              physics: const BouncingScrollPhysics(),
+                              slivers: [
+                                // 5 Explanation Cards
+                                _sliverSectionCard(
+                                  icon: Icons.lightbulb_outline_rounded,
+                                  title: 'Simple Meaning',
+                                  body: _explanation!.simpleMeaning,
+                                  accent: isDark
+                                      ? AppColors.darkPrimary
+                                      : AppColors.lightPrimary,
+                                  isDark: isDark,
+                                ),
+                                _sliverSpacer(),
+                                _sliverSectionCard(
+                                  icon: Icons.menu_book_outlined,
+                                  title: 'Author\'s Context',
+                                  body: _explanation!.authorContext,
+                                  accent: isDark
+                                      ? AppColors.darkSuccess
+                                      : AppColors.lightSuccess,
+                                  isDark: isDark,
+                                ),
+                                _sliverSpacer(),
+                                _sliverSectionCard(
+                                  icon: Icons.psychology_rounded,
+                                  title: 'Reflect',
+                                  body: _explanation!.reflectionQuestion,
+                                  accent: isDark
+                                      ? AppColors.darkWarning
+                                      : AppColors.lightWarning,
+                                  isDark: isDark,
+                                ),
+                                _sliverSpacer(),
+                                _sliverSectionCard(
+                                  icon: Icons.auto_awesome_outlined,
+                                  title: 'Analogy',
+                                  body: _explanation!.analogy,
+                                  accent: isDark
+                                      ? const Color(0xFFB39DDB)
+                                      : const Color(0xFF7E57C2),
+                                  isDark: isDark,
+                                ),
+                                _sliverSpacer(),
+                                _sliverSectionCard(
+                                  icon: Icons.star_border_rounded,
+                                  title: 'Key Takeaway',
+                                  body: _explanation!.takeaway,
+                                  accent: isDark
+                                      ? AppColors.darkPrimary
+                                      : AppColors.lightPrimary,
+                                  isDark: isDark,
+                                ),
+
+                                // Divider
+                                const SliverToBoxAdapter(
+                                    child: SizedBox(height: 16)),
+                                SliverToBoxAdapter(
+                                  child: _divider(isDark),
+                                ),
+
+                                // Quick suggestion chips
+                                SliverToBoxAdapter(
+                                  child: _quickChipsWrap(isDark),
+                                ),
+
+                                // Chat messages
+                                if (chatMessages.isNotEmpty)
+                                  SliverList(
+                                    delegate: SliverChildBuilderDelegate(
+                                      (_, index) {
+                                        final msg = chatMessages[index];
+                                        return _ChatBubble(
+                                          role: msg.role,
+                                          content: msg.content,
+                                          isDark: isDark,
+                                        );
+                                      },
+                                      childCount: chatMessages.length,
+                                    ),
+                                  ),
+
+                                // Typing indicator
+                                if (highlightsState.isFollowingUp)
+                                  const SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(vertical: 8),
+                                      child: _TypingIndicator(),
+                                    ),
+                                  ),
+
+                                const SliverToBoxAdapter(
+                                    child: SizedBox(height: 12)),
+                              ],
+                            ),
             ),
+
+            // Chat input bar (fixed at bottom)
+            if (_explanation != null && !_failed)
+              _ChatInputBar(
+                controller: _chatInputController,
+                isDark: isDark,
+                isSending: highlightsState.isFollowingUp,
+                onSend: _sendFollowUp,
+              ),
           ],
         ),
       ),
     );
   }
+
+  Widget _sliverSpacer() =>
+      const SliverToBoxAdapter(child: SizedBox(height: 10));
+
+  SliverToBoxAdapter _sliverSectionCard({
+    required IconData icon,
+    required String title,
+    required String body,
+    required Color accent,
+    required bool isDark,
+  }) {
+    return SliverToBoxAdapter(
+      child: _SectionCard(
+        icon: icon,
+        title: title,
+        body: body,
+        accent: accent,
+        isDark: isDark,
+      ),
+    );
+  }
+
+  Widget _divider(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Divider(
+              color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+              thickness: 0.5,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Ask Follow-up',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Divider(
+              color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+              thickness: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickChipsWrap(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _quickChips.map((chip) {
+          return ActionChip(
+            label: Text(
+              chip,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkInk : AppColors.lightInk,
+              ),
+            ),
+            backgroundColor:
+                isDark ? AppColors.darkCard : AppColors.lightSecondary,
+            side: BorderSide(
+              color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+              width: 0.5,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            onPressed: () => _sendFollowUp(chip),
+          );
+        }).toList(),
+      ),
+    );
+  }
 }
 
-class _QuoteBlock extends StatelessWidget {
-  final String text;
-  final bool isDark;
+// ─── Editable Passage Card ──────────────────────────────────────────
 
-  const _QuoteBlock({required this.text, required this.isDark});
+class _EditablePassageCard extends StatelessWidget {
+  final String text;
+  final bool isEditing;
+  final TextEditingController editController;
+  final bool isDark;
+  final VoidCallback onToggleEdit;
+  final VoidCallback onReExplain;
+
+  const _EditablePassageCard({
+    required this.text,
+    required this.isEditing,
+    required this.editController,
+    required this.isDark,
+    required this.onToggleEdit,
+    required this.onReExplain,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -161,136 +459,109 @@ class _QuoteBlock extends StatelessWidget {
         borderRadius: 14,
         depth: 2.5,
       ),
-      child: Text(
-        '"${text.trim()}"',
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 13,
-          height: 1.45,
-          fontStyle: FontStyle.italic,
-          color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _LoadingState extends StatelessWidget {
-  const _LoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(
-            'Reading with AI…',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Selected Passage',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color:
+                        isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onToggleEdit,
+                child: Icon(
+                  isEditing ? Icons.close_rounded : Icons.edit_rounded,
+                  size: 18,
+                  color: primary,
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 8),
+          if (isEditing) ...[
+            TextField(
+              controller: editController,
+              maxLines: 5,
+              minLines: 3,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                fontStyle: FontStyle.italic,
+                color: isDark ? AppColors.darkInk : AppColors.lightInk,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Edit or paste the correct text here...',
+                hintStyle: TextStyle(
+                  color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightMuted,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightMuted,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: primary, width: 1.5),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onReExplain,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Re-Explain'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ] else ...[
+            Text(
+              '"$text"',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                fontStyle: FontStyle.italic,
+                color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  final VoidCallback onRetry;
-
-  const _ErrorState({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            size: 36,
-            color: isDark ? AppColors.darkDanger : AppColors.lightDanger,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Could not explain this highlight.\nMake sure an AI provider is configured.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.5,
-              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExplanationList extends StatelessWidget {
-  final HighlightExplanation explanation;
-  final bool isDark;
-
-  const _ExplanationList({required this.explanation, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      children: [
-        _SectionCard(
-          icon: Icons.lightbulb_outline_rounded,
-          title: 'Simple meaning',
-          body: explanation.simpleMeaning,
-          accent: primary,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          icon: Icons.menu_book_outlined,
-          title: 'Why the author wrote it',
-          body: explanation.authorContext,
-          accent: isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          icon: Icons.psychology_rounded,
-          title: 'Reflect',
-          body: explanation.reflectionQuestion,
-          accent: isDark ? AppColors.darkWarning : AppColors.lightWarning,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          icon: Icons.workspace_premium_outlined,
-          title: 'Analogy',
-          body: explanation.analogy,
-          accent: isDark ? AppColors.darkMuted : AppColors.lightMuted,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          icon: Icons.star_border_rounded,
-          title: 'Takeaway',
-          body: explanation.takeaway,
-          accent: primary,
-          isDark: isDark,
-        ),
-      ],
-    );
-  }
-}
+// ─── Section Card ───────────────────────────────────────────────────
 
 class _SectionCard extends StatelessWidget {
   final IconData icon;
@@ -341,12 +612,356 @@ class _SectionCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13.5,
                     height: 1.5,
-                    color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                    color: isDark
+                        ? AppColors.darkInk
+                        : AppColors.lightInk,
                   ),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Chat Bubble ────────────────────────────────────────────────────
+
+class _ChatBubble extends StatelessWidget {
+  final String role;
+  final String content;
+  final bool isDark;
+
+  const _ChatBubble({
+    required this.role,
+    required this.content,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = role == 'user';
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+    final card = isDark ? AppColors.darkCard : AppColors.lightPaper;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isUser)
+            Container(
+              margin: const EdgeInsets.only(right: 8, top: 2),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.auto_awesome,
+                  size: 14, color: Colors.white),
+            ),
+          Flexible(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isUser ? primary : card,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isUser ? 16 : 4),
+                  bottomRight: Radius.circular(isUser ? 4 : 16),
+                ),
+                border: isUser
+                    ? null
+                    : Border.all(
+                        color: isDark
+                            ? AppColors.darkBorder
+                            : AppColors.lightMuted,
+                        width: 0.5,
+                      ),
+              ),
+              child: Text(
+                content,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: isUser
+                      ? Colors.white
+                      : (isDark
+                          ? AppColors.darkInk
+                          : AppColors.lightInk),
+                ),
+              ),
+            ),
+          ),
+          if (isUser)
+            Container(
+              margin: const EdgeInsets.only(left: 8, top: 2),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                shape: BoxShape.circle,
+              ),
+              child:
+                  const Icon(Icons.person, size: 14, color: Colors.white),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Typing Indicator ───────────────────────────────────────────────
+
+class _TypingIndicator extends StatelessWidget {
+  const _TypingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(right: 8),
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkPrimary : AppColors.lightPrimary,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.auto_awesome,
+              size: 14, color: Colors.white),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkCard : AppColors.lightPaper,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+              width: 0.5,
+            ),
+          ),
+          child: const _DotsAnimation(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DotsAnimation extends StatefulWidget {
+  const _DotsAnimation();
+
+  @override
+  State<_DotsAnimation> createState() => _DotsAnimationState();
+}
+
+class _DotsAnimationState extends State<_DotsAnimation>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? AppColors.darkMuted : AppColors.lightMuted;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (ctx, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final delay = i * 0.3;
+            final value = ((_controller.value - delay) % 1.0);
+            final opacity = value < 0.5
+                ? (value * 2).clamp(0.3, 1.0)
+                : (1.0 - (value - 0.5) * 2).clamp(0.3, 1.0);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.5),
+              child: Opacity(
+                opacity: opacity.toDouble(),
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
+// ─── Chat Input Bar ─────────────────────────────────────────────────
+
+class _ChatInputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isDark;
+  final bool isSending;
+  final ValueChanged<String> onSend;
+
+  const _ChatInputBar({
+    required this.controller,
+    required this.isDark,
+    required this.isSending,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = isDark ? AppColors.darkPrimary : AppColors.lightPrimary;
+    final card = isDark ? AppColors.darkCard : AppColors.lightPaper;
+
+    return Container(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: card,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+                  width: 0.5,
+                ),
+              ),
+              child: TextField(
+                controller: controller,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? AppColors.darkInk : AppColors.lightInk,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Ask a follow-up...',
+                  hintStyle: TextStyle(
+                    color:
+                        isDark ? AppColors.darkMuted : AppColors.lightMuted,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                ),
+                onSubmitted: (text) {
+                  if (text.trim().isNotEmpty && !isSending) {
+                    onSend(text.trim());
+                  }
+                },
+                textInputAction: TextInputAction.send,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: isSending
+                ? null
+                : () {
+                    final text = controller.text.trim();
+                    if (text.isNotEmpty) onSend(text);
+                  },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSending
+                    ? (isDark ? AppColors.darkMuted : AppColors.lightMuted)
+                    : primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.send_rounded,
+                  size: 18, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Loading State ──────────────────────────────────────────────────
+
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            'Reading with AI...',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Error State ────────────────────────────────────────────────────
+
+class _ErrorState extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            size: 36,
+            color: isDark ? AppColors.darkDanger : AppColors.lightDanger,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Could not explain this highlight.\nMake sure an AI provider is configured.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: isDark ? AppColors.darkMuted : AppColors.lightMuted,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );
